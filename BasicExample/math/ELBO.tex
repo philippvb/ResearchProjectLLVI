@@ -1,0 +1,113 @@
+\newcommand{\NUMBER}{10}
+\newcommand{\EXERCISES}{3}
+\newcommand{\DEADLINE}{01.02.2021}
+\newcommand{\COURSE}{Math for Last-Layer Variational Inference}
+\newcommand{\STUDENTA}{Philipp von Bachmann}
+\documentclass[a4paper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{amsmath, enumerate, amssymb, multirow, fancyhdr, color, graphicx, lastpage, listings, tikz, pdflscape, subfigure, float, polynom, hyperref, tabularx, forloop, geometry, listings, fancybox, tikz, forest, tabstackengine, cancel}
+\input kvmacros
+\geometry{a4paper,left=3cm, right=3cm, top=3cm, bottom=3cm}
+\pagestyle {fancy}
+\fancyhead[C]{\COURSE}
+\fancyhead[R]{\today}
+\fancyfoot[L]{}
+\fancyfoot[C]{}
+\fancyfoot[R]{Page \thepage /\pageref*{LastPage}}
+\def\header#1#2{
+  \begin{center}
+    {\Large Assignment #1}\\
+    %{(Due by: #2)}
+  \end{center}
+}
+
+\newcounter{punktelistectr}
+\newcounter{punkte}
+\newcommand{\punkteliste}[2]{%
+  \setcounter{punkte}{#2}%
+  \addtocounter{punkte}{-#1}%
+  \stepcounter{punkte}%<-- also punkte = m-n+1 = Anzahl Spalten[1]
+  \begin{center}%
+  \begin{tabularx}{\linewidth}[]{@{}*{\thepunkte}{>{\centering\arraybackslash} X|}@{}>{\centering\arraybackslash}X}
+      \forloop{punktelistectr}{#1}{\value{punktelistectr} < #2 } %
+      {%
+        \thepunktelistectr &
+      }
+      #2 &  $\Sigma$ \\
+      \hline
+      \forloop{punktelistectr}{#1}{\value{punktelistectr} < #2 } %
+      {%
+        &
+      } &\\
+      \forloop{punktelistectr}{#1}{\value{punktelistectr} < #2 } %
+      {%
+        &
+      } &\\
+    \end{tabularx}
+  \end{center}
+}
+\begin{document}
+\section{ELBO diagonal Gaussian}
+    The general form of the ELBO is:
+    \begin{align*}
+        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n p(y_i \vert f(x_i)) + D_{KL}(q(w_l) \Vert p(w_l))]\\
+    \end{align*}
+
+\subsection{KL-divergence}
+    We set the prior $p(w_l)$ as well as $q$ to a diagonal gaussian
+    \begin{align*}
+        D_{KL}(q(w_l) \Vert p(w_l))
+        %&= \int_{- \infty}^\infty q(w_l) log(\frac{p(w_l)}{q(w_l)}) dw_l\\
+        &= \mathbb{E}_{q(w_l)} [log(\frac{p(w_l)}{q(w_l)})] \\
+        &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}} exp(-\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)))\\
+        &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}} exp(-\frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)))] \\
+        &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
+        &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}}) + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
+        &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
+        & + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
+        % see for example:
+        % http://stanford.edu/~jduchi/projects/general_notes.pdf
+        % https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
+        &= \frac{1}{2}(log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -n + tr(\Sigma^{-1}_p \Sigma_q ) + (\mu_p - \mu_q)^T \Sigma^{-1}_p (\mu_p - \mu_q))\\
+    \end{align*}
+    As we assumed $\Sigma$ is diagonal:
+    \begin{align}
+        % &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\prod_i\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{1}{2} \sum_i - (w_{l_i} - \mu_{q_i})^2 \Sigma^{-1}_{q_i} + (w_{l_i} - \mu_{p_i})^2 \Sigma^{-1}_{p_i}]\\
+        &= \frac{1}{2} \sum_{i=1}^n log(\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) - n + \frac{\Sigma_{q_i}}{\Sigma_{p_i}}  +  (\mu_{p_i} - \mu_{q_i})^2 \Sigma^{-1}_{p_i}
+    \end{align}
+
+    If we use a prior of $\mu_p=0$ and $\Sigma_p=Id$, then
+    \begin{align}
+        &= \frac{1}{2} \sum_{i=1}^n - log(\Sigma_{q_i}) - n + \Sigma_{q_i} +  \mu_{q_i}^2
+    \end{align}
+        
+    % later in pytroch use:
+    %torch.distributions.kl.kl_divergence
+    % https://discuss.pytorch.org/t/use-kl-divergence-as-loss-between-two-multivariate-gaussians/40865
+
+\subsection{Likelihood}
+    Assuming $f_w(x)$ outputs a probability distribution over the classes, we use a categorial distribution for the likelihood
+    \begin{align*}
+        p(y_i \Vert f_w(x_i))
+        &= \prod_{j=1}^k f_w(x_{i_j})^{y_{i_j}} \\
+    \end{align*}
+    If we have just one true class $l$ and one-hot encoded, we have:
+    \begin{align*}
+        = f_w(x_{i_l})
+    \end{align*}
+
+\section{Predictions}
+\begin{align*}
+    p(y \vert f_w(x)) 
+    &= \mathbb{E}_{p(w)}[p(y \vert f_w(x))]\\
+    &\approx E_{q(w)}[p(y \vert f_w(x))]\\
+    &\approx \frac{1}{M}\sum_{i=1}^m P(y \vert f_{w_i}(x))
+\end{align*}
+
+
+
+
+
+\end{document}
+
