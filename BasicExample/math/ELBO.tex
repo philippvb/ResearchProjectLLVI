@@ -51,7 +51,7 @@
 \section{ELBO diagonal Gaussian}
     The general form of the ELBO is:
     \begin{align*}
-        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n p(y_i \vert f(x_i)) + D_{KL}(q(w_l) \Vert p(w_l))]\\
+        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n p(y_i \vert f(x_i))] - D_{KL}(q(w_l) \Vert p(w_l))\\
     \end{align*}
 
 \subsection{KL-divergence}
