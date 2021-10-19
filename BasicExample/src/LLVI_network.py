@@ -23,12 +23,14 @@ class LLVI_network_diagonal(nn.Module):
     def forward(self, x, samples=1):
         features = self.feature_extractor(x)
         output = features @ self.sample_ll(samples=samples)
-        output = F.log_softmax(output, dim=1)
+        likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
+        likelihood = torch.mean(likelihood, dim=0) # take the mean
         kl_loss = self.KL_div_gaussian_diagonal()
-        return output, kl_loss
+        return likelihood, kl_loss
 
     def sample_ll(self, samples=1):
-        return self.ll_mu + torch.exp(0.5 * self.ll_log_var) * torch.mean(torch.randn((samples, ) + self.ll_log_var.size()), dim=0)
+        std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
+        return self.ll_mu + std
 
     
     def KL_div_gaussian_diagonal(self):
