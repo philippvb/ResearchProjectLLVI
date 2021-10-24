@@ -96,7 +96,7 @@ class LLVI_network_diagonal(LLVI_network):
 
         super(LLVI_network_diagonal, self).__init__(feature_extractor=feature_extractor, lr=lr, tau=tau)
         self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
-        self.ll_log_var =  nn.Parameter(torch.exp(torch.tensor([init_ll_log_var])) * torch.randn_like(self.ll_mu, requires_grad=True))
+        self.ll_log_var =  nn.Parameter(init_ll_log_var * torch.randn_like(self.ll_mu, requires_grad=True))
         self.prior_mu = prior_mu * torch.ones_like(self.ll_mu)
         self.prior_log_var = prior_log_var * torch.ones_like(self.ll_log_var)
         self.optimizer = optim.SGD(self.parameters(),
