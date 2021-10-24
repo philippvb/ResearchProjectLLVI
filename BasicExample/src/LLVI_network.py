@@ -4,37 +4,29 @@ import torch.optim as optim
 import torch.nn.functional as F
 
 
-class LLVI_network_diagonal(nn.Module):
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=0, lr=1e-2, tau=1) -> None:
-        super(LLVI_network_diagonal, self).__init__()
+class LLVI_network(nn.Module):
+    """Base class for Last-Layer Variational Inference Networks (LLVI), categorical networks.
+    """
+    def __init__(self, feature_extractor, lr=1e-2, tau=1) -> None:
+        super(LLVI_network, self).__init__()
         self.feature_extractor = feature_extractor
-
-        self.ll_mu =  nn.Parameter(torch.randn(feature_dim, out_dim, requires_grad=True))
-        self.ll_log_var =  nn.Parameter(torch.randn_like(self.ll_mu, requires_grad=True))
-        self.prior_mu = prior_mu * torch.ones_like(self.ll_mu)
-        self.prior_log_var = prior_log_var * torch.ones_like(self.ll_log_var)
-
-        self.optimizer = optim.SGD(self.parameters(),
-                        lr=lr,momentum=0.5)
-
         self.loss_fun = nn.NLLLoss(reduction="mean")
         self.tau = tau
 
     def forward(self, x, samples=1):
         features = self.feature_extractor(x)
         output = features @ self.sample_ll(samples=samples)
-        likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
-        likelihood = torch.mean(likelihood, dim=0) # take the mean
-        kl_loss = self.KL_div_gaussian_diagonal()
-        return likelihood, kl_loss
+        log_likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
+        log_likelihood = torch.mean(log_likelihood, dim=0) # take the mean
+        kl_loss = self.KL_div()
+        return log_likelihood, kl_loss
 
     def sample_ll(self, samples=1):
-        std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
-        return self.ll_mu + std
+        raise NotImplementedError
 
     
-    def KL_div_gaussian_diagonal(self):
-        return 0.5 * (torch.sum(self.prior_log_var) - torch.sum(self.ll_log_var) - self.ll_mu.shape[0] + torch.sum(torch.exp(self.ll_log_var - self.prior_log_var)) + torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var))))
+    def KL_div(self):
+        raise NotImplementedError
 
 
     def train_model(self, train_loader, n_datapoints, epochs=1, samples=1):
@@ -45,9 +37,9 @@ class LLVI_network_diagonal(nn.Module):
             prediction_losses = []
             for batch_idx, (data, target) in enumerate(train_loader):
                 self.optimizer.zero_grad()
-                output, kl_loss = self.forward(data, samples=samples)
-                prediction_loss = self.loss_fun(output, target)
-                kl_loss = + self.tau * kl_loss / n_datapoints # rescale kl_loss
+                log_likelihood, kl_loss = self.forward(data, samples=samples)
+                prediction_loss = self.loss_fun(log_likelihood, target)
+                kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
                 loss = prediction_loss + kl_loss
                 loss.backward()
                 with torch.no_grad():
@@ -84,8 +76,8 @@ class LLVI_network_diagonal(nn.Module):
         confidence_batch = []
         with torch.no_grad():
             for data, target in test_loader:
-                output, kl_div = self.forward(data, samples=samples)
-                output_probs = F.softmax(output, dim=1)
+                log_likelihood, kl_div = self.forward(data, samples=samples)
+                output_probs = torch.exp(log_likelihood)
                 pred, _ = torch.max(output_probs, dim=1) # confidence in choice
                 confidence_batch.append(torch.mean(pred))
             print(f"The mean confidence for in distribution data is: {sum(confidence_batch)/len(confidence_batch)}")
@@ -93,11 +85,89 @@ class LLVI_network_diagonal(nn.Module):
         ood_confidence_batch = []
         with torch.no_grad():
             for data, target in ood_test_loader:
-                output, kl_div = self.forward(data, samples=5)
-                output_probs = F.softmax(output, dim=1)
+                log_likelihood, kl_div = self.forward(data, samples=5)
+                output_probs = torch.exp(log_likelihood)
                 pred, _ = torch.max(output_probs, dim=1) # confidence in choice
                 ood_confidence_batch.append(torch.mean(pred))
             print(f"The mean confidence for out-of distribution data is: {sum(ood_confidence_batch)/len(ood_confidence_batch)}")
+
+class LLVI_network_diagonal(LLVI_network):
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1) -> None:
+
+        super(LLVI_network_diagonal, self).__init__(feature_extractor=feature_extractor, lr=lr, tau=tau)
+        self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
+        self.ll_log_var =  nn.Parameter(torch.exp(torch.tensor([init_ll_log_var])) * torch.randn_like(self.ll_mu, requires_grad=True))
+        self.prior_mu = prior_mu * torch.ones_like(self.ll_mu)
+        self.prior_log_var = prior_log_var * torch.ones_like(self.ll_log_var)
+        self.optimizer = optim.SGD(self.parameters(),
+                lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
+
+    def sample_ll(self, samples=1):
+        std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
+        return self.ll_mu + std
+
+    def KL_div(self):
+        return 0.5 * (torch.sum(self.prior_log_var) - torch.sum(self.ll_log_var) - self.ll_mu.shape[0] + torch.sum(torch.exp(self.ll_log_var - self.prior_log_var)) + torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var))))
+
+
+class LLVI_network_KFac(LLVI_network):
+    def __init__(self, feature_extractor, feature_dim, out_dim, fac1_dim, fac2_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1) -> None:
+        super(LLVI_network_KFac, self).__init__(feature_extractor=feature_extractor, lr=lr, tau=tau)
+
+        # last-layer mean 
+        self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
+        # ll log var is Kronecker factorized
+        self.ll_log_var_a =  nn.Parameter(torch.exp(torch.tensor([init_ll_log_var])) * torch.randn(fac1_dim, requires_grad=True))
+        self.ll_log_var_b =  nn.Parameter(torch.exp(torch.tensor([init_ll_log_var])) * torch.randn(fac2_dim, requires_grad=True))
+        # prior mu and var is still diagonal
+        self.prior_mu = prior_mu * torch.ones_like(self.ll_mu)
+        self.prior_log_var = prior_log_var * torch.ones_like(self.get_ll_log_var())
+
+        self.optimizer = optim.SGD(self.parameters(),
+        lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
+
+    def sample_ll(self, samples=1):
+        ll_var = torch.exp(self.get_ll_log_var())
+        return torch.distributions.MultivariateNormal(torch.flatten(self.ll_mu), ll_var).sample(samples).reshape(self.ll_mu.size() + (samples,))
+
+    def get_ll_log_var(self):
+        """Create the log variance matrix
+
+        Returns:
+            torch.tensor: THe log covariance matrix
+        """
+        fac1, fac2 = self.convert_to_cov_facs(self.ll_log_var_a, self.ll_log_var_b)
+        return torch.kron(fac1, fac2)
+    
+    def convert_to_cov_facs(self, a, b):
+        """Converts the low rank matrices a and b to the factors for the Kronkecker factorization of the Covariance matrix
+
+        Args:
+            a (torch.tensor): The low rank matrix of the first factor
+            b (torch.tensor): The low rank matrix of the second factor
+
+        Returns:
+            (torch.tensor, torch.tensor): Tuple of the two factors
+        """
+        return torch.exp(a @ a.T), torch.exp(b @ b.T    )
+
+    def get_ll_cov_det(self, a, b):
+        """Computes the log determinant of the covariance matrix
+
+        Args:
+            a (torch.tensor): The low rank matrix of the first factor
+            b (torch.tensor): The low rank matrix of the second factor
+
+        Returns:
+            float: The log determinant
+        """
+        fac1, fac2 = self.convert_to_cov_facs(a, b)
+        return torch.pow(torch.logdet(fac1), fac1.shape[0]) * torch.pow(torch.logdet(fac2), fac2.shape[0])
+
+    def KL_div(self):
+        log_determinant = torch.sum(self.prior_log_var) - (torch.pow(torch.logdet(self.ll_log_var_fac1), self.ll_log_var_fac1.shape[0]) * torch.pow(torch.logdet(self.ll_log_var_fac2), self.ll_log_var_fac2.shape[0]))
+        trace = torch.sum(torch.diagonal(self.ll_log_var_fac1) * torch.diagonal(self.ll_log_var_fac2))
+        return 0.5 * (log_determinant - self.ll_mu.shape[0] + trace + torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var))))
 
 
 
