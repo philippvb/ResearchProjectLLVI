@@ -111,47 +111,62 @@ class LLVI_network_diagonal(LLVI_network):
 
 
 class LLVI_network_KFac(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, fac1_dim, fac2_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1) -> None:
         super(LLVI_network_KFac, self).__init__(feature_extractor=feature_extractor, lr=lr, tau=tau)
+
+        # feature dimensions
+        self.feature_dim = feature_dim
+        self.out_dim = out_dim
 
         # last-layer mean 
         self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
-        # ll log var is Kronecker factorized
-        self.ll_log_var_a =  nn.Parameter(torch.exp(torch.tensor([init_ll_log_var])) * torch.randn(fac1_dim, requires_grad=True))
-        self.ll_log_var_b =  nn.Parameter(torch.exp(torch.tensor([init_ll_log_var])) * torch.randn(fac2_dim, requires_grad=True))
+        # cholesky decomposition of factors
+        self.chol_a =  nn.Parameter(self.create_cholesky(A_dim, init_ll_cov_scaling))
+        self.chol_b =  nn.Parameter(self.create_cholesky(B_dim, init_ll_cov_scaling))
         # prior mu and var is still diagonal
         self.prior_mu = prior_mu * torch.ones_like(self.ll_mu)
-        self.prior_log_var = prior_log_var * torch.ones_like(self.get_ll_log_var())
+        self.prior_log_var = prior_log_var * torch.ones_like(self.prior_mu)
 
         self.optimizer = optim.SGD(self.parameters(),
         lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
 
-    def sample_ll(self, samples=1):
-        ll_var = torch.exp(self.get_ll_log_var())
-        return torch.distributions.MultivariateNormal(torch.flatten(self.ll_mu), ll_var).sample(samples).reshape(self.ll_mu.size() + (samples,))
 
-    def get_ll_log_var(self):
-        """Create the log variance matrix
-
-        Returns:
-            torch.tensor: THe log covariance matrix
-        """
-        fac1, fac2 = self.convert_to_cov_facs(self.ll_log_var_a, self.ll_log_var_b)
-        return torch.kron(fac1, fac2)
-    
-    def convert_to_cov_facs(self, a, b):
-        """Converts the low rank matrices a and b to the factors for the Kronkecker factorization of the Covariance matrix
+    def create_cholesky(self, dimensions, scaling_factor=1):
+        """Create an lower triangular matrix with positive entries on the diagonal, which can therefore be used as a Cholesky decomposition.
 
         Args:
-            a (torch.tensor): The low rank matrix of the first factor
-            b (torch.tensor): The low rank matrix of the second factor
+            dimensions (int): dimension for the matrix
+            scaling_factor (float): scaling factor for the normal distributions
 
         Returns:
-            (torch.tensor, torch.tensor): Tuple of the two factors
+            torch.tensor: a matrix of size dim x dim
         """
-        return torch.exp(a @ a.T), torch.exp(b @ b.T    )
+        return torch.tril(scaling_factor * torch.randn((dimensions, dimensions), requires_grad=True), diagonal=-1) + torch.diag(torch.exp(scaling_factor * torch.randn(dimensions, requires_grad=True)))
 
-    def get_ll_cov_det(self, a, b):
+    def get_ll_cov(self):
+        """Create the covariance matrix
+
+        Returns:
+            torch.tensor: The covariance matrix
+        """
+        chol_fac =  self.get_cov_chol()
+        return chol_fac @ chol_fac.T
+
+    def get_cov_chol(self):
+        """Get the Cholesky decomposition of the Covariance Matrix
+
+        Returns:
+            torch.tensor: Cholesky decomposition
+        """
+        return torch.kron(self.chol_a, self.chol_b)
+
+    def sample_ll(self, samples=1):
+        cov_chol = self.get_cov_chol()
+        std = torch.reshape((cov_chol @ torch.randn((self.feature_dim * self.out_dim, samples))).T, (samples, self.feature_dim, self.out_dim))
+        return self.ll_mu + std
+
+
+    def get_ll_cov_log_det(self):
         """Computes the log determinant of the covariance matrix
 
         Args:
@@ -161,14 +176,17 @@ class LLVI_network_KFac(LLVI_network):
         Returns:
             float: The log determinant
         """
-        fac1, fac2 = self.convert_to_cov_facs(a, b)
-        return torch.pow(torch.logdet(fac1), fac1.shape[0]) * torch.pow(torch.logdet(fac2), fac2.shape[0])
+        log_det_q = 2 * torch.sum(torch.diagonal(self.get_cov_chol()))
+        log_det_p = torch.sum(self.prior_log_var)
+        return log_det_p - log_det_q
 
     def KL_div(self):
-        log_determinant = torch.sum(self.prior_log_var) - (torch.pow(torch.logdet(self.ll_log_var_fac1), self.ll_log_var_fac1.shape[0]) * torch.pow(torch.logdet(self.ll_log_var_fac2), self.ll_log_var_fac2.shape[0]))
-        trace = torch.sum(torch.diagonal(self.ll_log_var_fac1) * torch.diagonal(self.ll_log_var_fac2))
-        return 0.5 * (log_determinant - self.ll_mu.shape[0] + trace + torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var))))
-
+        log_determinant = self.get_ll_cov_log_det()
+        trace = torch.sum(torch.divide(torch.diagonal(self.get_ll_cov()), torch.flatten(torch.exp(self.prior_log_var))))
+        scalar_prod = torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var)))
+        kl_div = 0.5 * (log_determinant - self.ll_mu.shape[0] + trace + scalar_prod)
+        assert kl_div >= 0 # sanity check
+        return kl_div
 
 
 

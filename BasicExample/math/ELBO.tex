@@ -48,63 +48,144 @@
   \end{center}
 }
 \begin{document}
-\section{ELBO diagonal Gaussian}
+
+\section{General Variational Inference}
     The general form of the ELBO is:
     \begin{align*}
         & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n p(y_i \vert f(x_i))] - D_{KL}(q(w_l) \Vert p(w_l))\\
     \end{align*}
 
-\subsection{KL-divergence}
-    We set the prior $p(w_l)$ as well as $q$ to a diagonal gaussian
-    \begin{align*}
-        D_{KL}(q(w_l) \Vert p(w_l))
-        %&= \int_{- \infty}^\infty q(w_l) log(\frac{p(w_l)}{q(w_l)}) dw_l\\
-        &= \mathbb{E}_{q(w_l)} [log(\frac{p(w_l)}{q(w_l)})] \\
-        &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}} exp(-\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)))\\
-        &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}} exp(-\frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)))] \\
-        &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
-        &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}}) + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
-        &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
-        & + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
-        % see for example:
-        % http://stanford.edu/~jduchi/projects/general_notes.pdf
-        % https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
-        &= \frac{1}{2}(log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -n + tr(\Sigma^{-1}_p \Sigma_q ) + (\mu_p - \mu_q)^T \Sigma^{-1}_p (\mu_p - \mu_q))\\
-    \end{align*}
-    As we assumed $\Sigma$ is diagonal:
-    \begin{align}
-        % &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\prod_i\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{1}{2} \sum_i - (w_{l_i} - \mu_{q_i})^2 \Sigma^{-1}_{q_i} + (w_{l_i} - \mu_{p_i})^2 \Sigma^{-1}_{p_i}]\\
-        &= \frac{1}{2} \sum_{i=1}^n log(\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) - n + \frac{\Sigma_{q_i}}{\Sigma_{p_i}}  +  (\mu_{p_i} - \mu_{q_i})^2 \Sigma^{-1}_{p_i}
-    \end{align}
+  \subsection{Likelihood for categorical data}
+      Assuming $f_w(x)$ outputs a probability distribution over the classes, we use a categorial distribution for the likelihood
+      \begin{align*}
+          p(y_i \Vert f_w(x_i))
+          &= \prod_{j=1}^k f_w(x_{i_j})^{y_{i_j}} \\
+      \end{align*}
+      If we have just one true class $l$ and one-hot encoded, we have:
+      \begin{align*}
+          = f_w(x_{i_l})
+      \end{align*}
 
-    If we use a prior of $\mu_p=0$ and $\Sigma_p=Id$, then
-    \begin{align}
-        &= \frac{1}{2} \sum_{i=1}^n - log(\Sigma_{q_i}) - n + \Sigma_{q_i} +  \mu_{q_i}^2
-    \end{align}
+  \section{Predictions}
+  \begin{align*}
+      p(y \vert f_w(x)) 
+      &= \mathbb{E}_{p(w)}[p(y \vert f_w(x))]\\
+      &\approx E_{q(w)}[p(y \vert f_w(x))]\\
+      &\approx \frac{1}{M}\sum_{i=1}^m P(y \vert f_{w_i}(x))
+  \end{align*}
+
+  \subsection{ELBO scaling}
+    \subsubsection{Batch size}
+      If we have $B$ equally sized batches with size $b$, then we need to scale the ELBO by
+      \begin{align*}
+        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{B} D_{KL}(q(w_l) \Vert p(w_l))\\
+      \end{align*}
+      for each parameter update according to: "Practical Variational Inference
+      for Neural Networks"
+      % https://papers.nips.cc/paper/2011/file/7eb3c8be3d411e8ebfab08eba5f49632-Paper.pdf
+      or "Bayesian Learning via Stochastic Gradient Langevin Dynamics" (if we assume equally sized batches)
+      % https://www.stats.ox.ac.uk/~teh/research/compstats/WelTeh2011a.pdf
+
+    \subsubsection{Mean instead of sum}
+      If we use a sum for our likelihood-loss, the values could get too big,
+      that's why we need to scale the KL div also by the batch size $b$ which results in
+      \begin{align*}
+        & \mathbb{E}_{q(w_l)}[\frac{1}{b}\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{B *b} D_{KL}(q(w_l) \Vert p(w_l))\\
+        &= \mathbb{E}_{q(w_l)}[\frac{1}{b}\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{N} D_{KL}(q(w_l) \Vert p(w_l))\\
+      \end{align*}
+      where $N$ is the total number of samples-
+
+
+\section{Different Kernels for Gaussians}
+  \subsection{KL-Divergence Gaussian}
+    The KL-Div between two Gaussians is:
+    \begin{align*}
+      D_{KL}(q(w_l) \Vert p(w_l))
+      %&= \int_{- \infty}^\infty q(w_l) log(\frac{p(w_l)}{q(w_l)}) dw_l\\
+      &= \mathbb{E}_{q(w_l)} [log(\frac{p(w_l)}{q(w_l)})] \\
+      &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}} exp(-\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)))\\
+      &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}} exp(-\frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)))] \\
+      &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
+      &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}}) + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
+      &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
+      & + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
+      % see for example:
+      % http://stanford.edu/~jduchi/projects/general_notes.pdf
+      % https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
+      &= \frac{1}{2}(log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -n + tr(\Sigma^{-1}_p \Sigma_q ) + (\mu_p - \mu_q)^T \Sigma^{-1}_p (\mu_p - \mu_q))\\
+  \end{align*}
+
+  \subsection{Diagonal}
+      We set the prior $p(w_l)$ as well as $q$ to a diagonal gaussian, this
+      means the Kl-Divergence can be further simplified to:
+      \begin{align}
+          % &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\prod_i\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{1}{2} \sum_i - (w_{l_i} - \mu_{q_i})^2 \Sigma^{-1}_{q_i} + (w_{l_i} - \mu_{p_i})^2 \Sigma^{-1}_{p_i}]\\
+          &= \frac{1}{2} \sum_{i=1}^n log(\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) - n + \frac{\Sigma_{q_i}}{\Sigma_{p_i}}  +  (\mu_{p_i} - \mu_{q_i})^2 \Sigma^{-1}_{p_i}
+      \end{align}
+
+      If we use a prior of $\mu_p=0$ and $\Sigma_p=Id$, then
+      \begin{align}
+          &= \frac{1}{2} \sum_{i=1}^n - log(\Sigma_{q_i}) - n + \Sigma_{q_i} +  \mu_{q_i}^2
+      \end{align}
+          
+      % later in pytroch use:
+      %torch.distributions.kl.kl_divergence
+      % https://discuss.pytorch.org/t/use-kl-divergence-as-loss-between-two-multivariate-gaussians/40865
+
+  \subsection{K-Fac}
+      First K-Fac just has covariances within each layer, however as we have
+      just one layer we have a full covariance matrix.
+      Next K-Fac approximates each block covariance $C$ with a Kronecker-Product of two Matrices.
+      $C= A \otimes B$
+
+      \subsubsection{Determinant}
+        If $A, n\times n$ and $B, m \times m$ are square, the determinant of a the Kronecker Product is
+        \begin{align}\label{eq:KronDet}
+          det(A \otimes B) = det(A)^n det(B)^m
+        \end{align}
         
-    % later in pytroch use:
-    %torch.distributions.kl.kl_divergence
-    % https://discuss.pytorch.org/t/use-kl-divergence-as-loss-between-two-multivariate-gaussians/40865
+      \subsubsection{Cholesky decomposition}
+        Because the covariance $C$ needs to be psd, each factor $A,B$ needs to be
+        psd according to \ref{eq:KronDet}. We can achieve this by parametrizing them with a Cholesky
+        decomposition. To do that, decompose $A,B$ in lower triangular matrices
+        $L_A, L_B$ with positive diagonal elements, such that: $A=L_AL_A^T$,
+        $B=L_BL_B^T$.
+        Moreover, if we have the Choleksy decomposition then we can rewrite the Kronecker product as:
+        \begin{align}\label{eq:CholKron}
+          A \otimes B = L_AL_A^T \otimes L_BL_B^T = (L_A \otimes L_B) (L_A \otimes L_B)^T
+        \end{align}
+        
+      \subsubsection{Determinant together with Cholesky}
+          The logdeterminant for the KL divergence with \ref{eq:KronDet} is:
+          \begin{align}\label{eq:CholDet}
+            \log \det (A \otimes B)
+            &= \log (\det (A)^n \det (B)^m)\\
+            &= n \cdot \log (\det (A)) + m \cdot \log ( \det (B)^m)\\
+            &= 2n \cdot \sum_i \log (A_{ii}) + 2m \cdot \sum_i \log (B_{ii})
+          \end{align}
+          where we used the fact that $\det(L) = \prod_i L_{ii}$ for triangular matrices.
 
-\subsection{Likelihood}
-    Assuming $f_w(x)$ outputs a probability distribution over the classes, we use a categorial distribution for the likelihood
-    \begin{align*}
-        p(y_i \Vert f_w(x_i))
-        &= \prod_{j=1}^k f_w(x_{i_j})^{y_{i_j}} \\
-    \end{align*}
-    If we have just one true class $l$ and one-hot encoded, we have:
-    \begin{align*}
-        = f_w(x_{i_l})
-    \end{align*}
-
-\section{Predictions}
-\begin{align*}
-    p(y \vert f_w(x)) 
-    &= \mathbb{E}_{p(w)}[p(y \vert f_w(x))]\\
-    &\approx E_{q(w)}[p(y \vert f_w(x))]\\
-    &\approx \frac{1}{M}\sum_{i=1}^m P(y \vert f_{w_i}(x))
-\end{align*}
-
+          However with equation \ref{eq:CholKron} we can simplify it easier:
+          \begin{align}
+            \log \det (A \otimes B)
+            &= \log \det (L_AL_A^T \otimes L_BL_B^T)\\
+            &= \log \det ((L_A \otimes L_B) (L_A \otimes L_B)^T)\\
+            &= \log (\det (L_A \otimes L_B) \det((L_A \otimes L_B)^T)))\\
+            &= \log ((\det (L_A \otimes L_B))^2)\\
+            &= 2\log (\det (L_A \otimes L_B))\\
+            &= 2 \sum_i \log (L_A \otimes L_B)_{ii}\\
+          \end{align}
+        
+        
+        
+  
+        % \subsubsection{Inverse}
+        %   The Inverse if a Kronecker product is the Kronkecker-Product of the inverse:
+        %   \begin{align}
+        %     (A \otimes B)^{-1} = A^{-1} \otimes B^{-1}
+        %   \end{align}
+          
+        %   for pytorch see: https://pytorch.org/docs/stable/generated/torch.cholesky_inverse.html
 
 
 
