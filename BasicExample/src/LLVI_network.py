@@ -51,23 +51,26 @@ class LLVI_network(nn.Module):
                     batch_prediction_losses.append(prediction_loss)
                 self.optimizer.step()
 
-                # maybe change requires grad to false??
-
-                # update the hyperparameters
-                if train_hyper and (batch_idx % update_freq) == 0:
-                    self.prior_optimizer.zero_grad()
-                    log_likelihood, kl_loss = self.forward(data, samples=samples)
-                    prediction_loss = self.loss_fun(log_likelihood, target)
-                    kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
-                    loss = prediction_loss + kl_loss
-                    loss.backward()
-                    self.prior_optimizer.step()
+            # update the hyperparameters
+            if train_hyper and (epoch % update_freq) == 0:
+                self.train_hyper(train_loader, n_datapoints, samples)
 
             current_epoch_loss = (sum(batch_kl_losses) + sum(batch_prediction_losses))/len(batch_prediction_losses)
             print(f"Finished Epoch {epoch}\n\tmean loss {current_epoch_loss}\n\tmean prediction loss {sum(batch_prediction_losses)/len(batch_prediction_losses)}\n\tmean kl loss {sum(batch_kl_losses)/len(batch_kl_losses)}")
 
             epoch_losses.append(current_epoch_loss)
         return epoch_losses
+
+
+    def train_hyper(self, train_loader, n_datapoints, samples):
+        for batch_idx, (data, target) in enumerate(train_loader):
+            self.prior_optimizer.zero_grad()
+            log_likelihood, kl_loss = self.forward(data, samples=samples)
+            prediction_loss = self.loss_fun(log_likelihood, target)
+            kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
+            loss = prediction_loss + kl_loss
+            loss.backward()
+            self.prior_optimizer.step()
 
     def test(self, test_loader, samples=5):
         test_losses = []
@@ -112,15 +115,8 @@ class LLVI_network_diagonal(LLVI_network):
     def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1) -> None:
         super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau)
         
-        # init_ll_mu = torch.full((feature_dim, out_dim), fill_value=init_ll_mu)
-        # self.ll_mu =  torch.normal(init_ll_mu, torch.eye(feature_dim * out_dim), requires_grad=True)
-        # self.ll_mu = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=init_ll_mu, requires_grad=True, dtype=torch.float))
-        self.ll_mu = nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
-
-        # init_ll_log_var = torch.full((feature_dim, out_dim), fill_value=init_ll_log_var)
-        # self.ll_log_var =  torch.normal(init_ll_log_var, torch.eye(feature_dim * out_dim))
-        # self.ll_log_var = nn.Parameter(torch.full_like(self.ll_mu, fill_value=init_ll_log_var, requires_grad=True, dtype=torch.float))
-        self.ll_log_var = nn.Parameter(init_ll_log_var + torch.randn_like(self.ll_mu, requires_grad=True))
+        self.ll_mu = nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim), requires_grad=True)
+        self.ll_log_var = nn.Parameter(init_ll_log_var + torch.randn_like(self.ll_mu), requires_grad=True)
         self.optimizer = optim.SGD(
             # self.parameters(),
             [{'params': self.feature_extractor.parameters(), "weight_decay": 0.1}, {"params": [self.ll_mu, self.ll_log_var]}],
