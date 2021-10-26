@@ -7,11 +7,12 @@ import torch.nn.functional as F
 class LLVI_network(nn.Module):
     """Base class for Last-Layer Variational Inference Networks (LLVI), categorical networks.
     """
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0) -> None:
         super(LLVI_network, self).__init__()
-        self.feature_extractor = feature_extractor
+        self.feature_extractor: nn.Module = feature_extractor
         self.loss_fun = nn.NLLLoss(reduction="mean")
         self.tau = tau
+        self.feature_extractor_optimizer = optim.SGD(self.feature_extractor.parameters(), lr=lr, momentum=0.8, weight_decay=wdecay)
 
         self.prior_mu = torch.full((feature_dim, out_dim), fill_value=prior_mu, requires_grad=True, dtype=torch.float32)
         self.prior_log_var = torch.full((feature_dim, out_dim), fill_value=prior_log_var, requires_grad=True, dtype=torch.float32)
@@ -40,16 +41,22 @@ class LLVI_network(nn.Module):
             batch_kl_losses = []
             batch_prediction_losses = []
             for batch_idx, (data, target) in enumerate(train_loader):
-                self.optimizer.zero_grad()
+                # clear gradients
+                self.ll_optimizer.zero_grad()
+                self.feature_extractor_optimizer.zero_grad()
+                # compute loss functions
                 log_likelihood, kl_loss = self.forward(data, samples=samples)
                 prediction_loss = self.loss_fun(log_likelihood, target)
                 kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
                 loss = prediction_loss + kl_loss
+                # backward pass
                 loss.backward()
+                self.ll_optimizer.step()
+                self.feature_extractor_optimizer.step()
+                # logging
                 with torch.no_grad():
                     batch_kl_losses.append(kl_loss)
                     batch_prediction_losses.append(prediction_loss)
-                self.optimizer.step()
 
             # update the hyperparameters
             if train_hyper and (epoch % update_freq) == 0:
@@ -63,6 +70,13 @@ class LLVI_network(nn.Module):
 
 
     def train_hyper(self, train_loader, n_datapoints, samples):
+        """Trains the hyperparameters/prior parameters of the VI model
+
+        Args:
+            train_loader ([type]): Trainingdata loader
+            n_datapoints ([type]): number of datapoints in train_loader for KL Scaling
+            samples ([type]): How many samples to take for each forward pass
+        """
         for batch_idx, (data, target) in enumerate(train_loader):
             self.prior_optimizer.zero_grad()
             log_likelihood, kl_loss = self.forward(data, samples=samples)
@@ -112,15 +126,12 @@ class LLVI_network(nn.Module):
 
 class LLVI_network_diagonal(LLVI_network):
 
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1) -> None:
-        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0) -> None:
+        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay)
         
         self.ll_mu = nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim), requires_grad=True)
         self.ll_log_var = nn.Parameter(init_ll_log_var + torch.randn_like(self.ll_mu), requires_grad=True)
-        self.optimizer = optim.SGD(
-            # self.parameters(),
-            [{'params': self.feature_extractor.parameters(), "weight_decay": 0.1}, {"params": [self.ll_mu, self.ll_log_var]}],
-            lr=lr,momentum=0.8)
+        self.ll_optimizer = optim.SGD([self.ll_mu, self.ll_log_var],lr=lr,momentum=0.8)
 
     def sample_ll(self, samples=1):
         std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
@@ -131,8 +142,8 @@ class LLVI_network_diagonal(LLVI_network):
 
 
 class LLVI_network_KFac(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1) -> None:
-        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau)
+    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0) -> None:
+        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay)
 
         # feature dimensions
         self.feature_dim = feature_dim
@@ -145,8 +156,7 @@ class LLVI_network_KFac(LLVI_network):
         self.chol_a_log_diag =  nn.Parameter(init_ll_cov_scaling * torch.randn(A_dim, requires_grad=True)) # separate diagonal (log since it has to be positive)
         self.chol_b_lower = nn.Parameter(init_ll_cov_scaling * torch.randn((B_dim, B_dim), requires_grad=True))
         self.chol_b_log_diag = nn.Parameter(init_ll_cov_scaling * torch.randn(B_dim, requires_grad=True))
-        self.optimizer = optim.SGD(self.parameters(),
-        lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
+        self.optimizer = optim.SGD([self.ll_mu, self.chol_a_lower, self.chol_a_log_diag, self.chol_b_lower, self.chol_b_log_diag],lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
 
 
     def get_ll_cov(self):
@@ -207,8 +217,8 @@ class LLVI_network_KFac(LLVI_network):
 
 
 class LLVI_network_full_Cov(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, init_ll_cov_scaling=1, lr=1e-2, tau=1) -> None:
-        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0) -> None:
+        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay)
 
         # last-layer mean 
         self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
@@ -216,8 +226,7 @@ class LLVI_network_full_Cov(LLVI_network):
         cov_dim = feature_dim*out_dim
         self.cov_lower = nn.Parameter(init_ll_cov_scaling * (torch.randn((cov_dim, cov_dim), requires_grad=True))) # lower triangular matrix without diagonal
         self.cov_log_diag =  nn.Parameter(init_ll_log_var + torch.randn(cov_dim, requires_grad=True)) # separate diagonal (log since it has to be positive)
-        self.optimizer = optim.SGD(self.parameters(),
-                lr=lr,momentum=0.8) # init optimizer here in oder to get all the parameters in
+        self.optimizer = optim.SGD([self.ll_mu, self.cov_lower, self.cov_log_diag], lr=lr,momentum=0.8) # init optimizer here in oder to get all the parameters in
 
     def get_cov_chol(self):
         cov_lower_diag = torch.tril(self.chol_a_lower, diagonal=-1)
