@@ -3,18 +3,28 @@ from torch import nn
 import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
+from enum import Enum
+
+class Loss(str, Enum):
+    CATEGORICAL = "categorical"
+    MSE = "mse"
+
 
 
 class LLVI_network(nn.Module):
     """Base class for Last-Layer Variational Inference Networks (LLVI), categorical networks.
     """
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL) -> None:
         super(LLVI_network, self).__init__()
         self.bias = bias
         if self.bias:
             feature_dim += 1
         self.feature_extractor: nn.Module = feature_extractor
-        self.loss_fun = nn.NLLLoss(reduction="mean")
+        if loss == Loss.CATEGORICAL:
+            self.loss_fun = self.loss_fun_categorical
+        elif loss == Loss.MSE:
+            self.loss_fun = self.loss_fun_regression
+
         self.tau = tau
         self.feature_extractor_optimizer = optim.SGD(self.feature_extractor.parameters(), lr=lr, momentum=0.8, weight_decay=wdecay)
 
@@ -22,15 +32,24 @@ class LLVI_network(nn.Module):
         self.prior_log_var = torch.full((feature_dim, out_dim), fill_value=prior_log_var, requires_grad=True, dtype=torch.float32)
         self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var], lr=lr, momentum=0.8) # optimizer for prior
 
+    def loss_fun_categorical(self, pred, target, mean=True):
+        output = F.log_softmax(pred, dim=-1) # convert to logprobs
+        if mean:
+            output = torch.mean(output, dim=0) # take the mean
+        return F.nll_loss(output, target, reduction="mean")
+
+    def loss_fun_regression(self, pred, target, mean=True):
+        if mean:
+            pred = torch.mean(pred, dim=0) # take the mean
+        return F.mse_loss(pred, target)
+
     def forward(self, x, samples=1):
         features = self.feature_extractor(x)
         if self.bias: # add bias of ones
             features = self.add_bias(features)
         output = features @ self.sample_ll(samples=samples)
-        log_likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
-        log_likelihood = torch.mean(log_likelihood, dim=0) # take the mean
         kl_loss = self.KL_div()
-        return log_likelihood, kl_loss
+        return output, kl_loss
 
     def add_bias(self, features):
         """Adds a bias feature to the end of a tensor
@@ -61,10 +80,8 @@ class LLVI_network(nn.Module):
             if self.bias:
                 features = self.add_bias(features)
         output = features @ self.sample_ll(samples=samples)
-        log_likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
-        log_likelihood = torch.mean(log_likelihood, dim=0) # take the mean
         kl_loss = self.KL_div()
-        return log_likelihood, kl_loss
+        return output, kl_loss
 
     def forward_ML_estimate(self, x):
         """Computes a forward pass with the ML estimate of the Last-Layer weights,
@@ -79,8 +96,8 @@ class LLVI_network(nn.Module):
         features = self.feature_extractor(x)
         if self.bias:
             features = self.add_bias(features)
-        log_likelihood = F.log_softmax(features @ self.ll_mu, dim=-1)
-        return log_likelihood
+        output = features @ self.ll_mu
+        return output
 
     def sample_ll(self, samples=1):
         raise NotImplementedError
@@ -120,8 +137,8 @@ class LLVI_network(nn.Module):
             self.ll_optimizer.zero_grad()
             self.feature_extractor_optimizer.zero_grad()
             # compute loss functions
-            log_likelihood, kl_loss = self.forward(data, samples=samples)
-            prediction_loss = self.loss_fun(log_likelihood, target)
+            output, kl_loss = self.forward(data, samples=samples)
+            prediction_loss = self.loss_fun(output, target)
             kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
             loss = prediction_loss + kl_loss
             # backward pass
@@ -143,8 +160,8 @@ class LLVI_network(nn.Module):
         """
         for batch_idx, (data, target) in enumerate(train_loader):
             self.prior_optimizer.zero_grad()
-            log_likelihood, kl_loss = self.forward(data, samples=samples)
-            prediction_loss = self.loss_fun(log_likelihood, target)
+            output, kl_loss = self.forward(data, samples=samples)
+            prediction_loss = self.loss_fun(output, target)
             kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
             loss = prediction_loss + kl_loss
             loss.backward()
@@ -157,8 +174,8 @@ class LLVI_network(nn.Module):
             self.ll_optimizer.zero_grad()
             self.feature_extractor_optimizer.zero_grad()
             # compute loss functions
-            log_likelihood = self.forward_ML_estimate(data)
-            prediction_loss = self.loss_fun(log_likelihood, target)
+            output = self.forward_ML_estimate(data)
+            prediction_loss = self.loss_fun(output, target, mean=False)
             loss = prediction_loss
             # backward pass
             loss.backward()
@@ -167,15 +184,15 @@ class LLVI_network(nn.Module):
             return prediction_loss, torch.tensor([0], dtype=torch.float32)
 
         return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=-1, samples=-1, train_step_fun=train_step_fun, train_hyper=False, update_freq=-1)
-        
+
 
     def train_LL(self, train_loader, n_datapoints, epochs=1, samples=1, train_hyper=False, update_freq=10):
         def train_step_fun(data, target):
             # clear gradients
             self.ll_optimizer.zero_grad()
             # compute loss functions
-            log_likelihood, kl_loss = self.forward_train_LL(data, samples=samples)
-            prediction_loss = self.loss_fun(log_likelihood, target)
+            output, kl_loss = self.forward_train_LL(data, samples=samples)
+            prediction_loss = self.loss_fun(output, target)
             kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
             loss = prediction_loss + kl_loss
             # backward pass
@@ -210,8 +227,8 @@ class LLVI_network(nn.Module):
         confidence_batch = []
         with torch.no_grad():
             for data, target in test_loader:
-                log_likelihood, kl_div = self.forward(data, samples=samples)
-                output_probs = torch.exp(log_likelihood)
+                output, kl_div = self.forward(data, samples=samples)
+                output_probs = torch.exp(output)
                 pred, _ = torch.max(output_probs, dim=1) # confidence in choice
                 confidence_batch.append(torch.mean(pred))
             print(f"The mean confidence for in distribution data is: {sum(confidence_batch)/len(confidence_batch)}")
@@ -219,16 +236,17 @@ class LLVI_network(nn.Module):
         ood_confidence_batch = []
         with torch.no_grad():
             for data, target in ood_test_loader:
-                log_likelihood, kl_div = self.forward(data, samples=5)
-                output_probs = torch.exp(log_likelihood)
+                output, kl_div = self.forward(data, samples=5)
+                output_probs = torch.exp(output)
                 pred, _ = torch.max(output_probs, dim=1) # confidence in choice
                 ood_confidence_batch.append(torch.mean(pred))
             print(f"The mean confidence for out-of distribution data is: {sum(ood_confidence_batch)/len(ood_confidence_batch)}")
 
+
 class LLVI_network_diagonal(LLVI_network):
 
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
-        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL) -> None:
+        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
         
         if self.bias:
             feature_dim += 1
