@@ -7,8 +7,11 @@ import torch.nn.functional as F
 class LLVI_network(nn.Module):
     """Base class for Last-Layer Variational Inference Networks (LLVI), categorical networks.
     """
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
         super(LLVI_network, self).__init__()
+        self.bias = bias
+        if self.bias:
+            feature_dim += 1
         self.feature_extractor: nn.Module = feature_extractor
         self.loss_fun = nn.NLLLoss(reduction="mean")
         self.tau = tau
@@ -20,11 +23,26 @@ class LLVI_network(nn.Module):
 
     def forward(self, x, samples=1):
         features = self.feature_extractor(x)
+        if self.bias: # add bias of ones
+            features = self.add_bias(features)
         output = features @ self.sample_ll(samples=samples)
         log_likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
         log_likelihood = torch.mean(log_likelihood, dim=0) # take the mean
         kl_loss = self.KL_div()
         return log_likelihood, kl_loss
+
+    def add_bias(self, features):
+        """Adds a bias feature to the end of a tensor
+
+        Args:
+            features (torch.tensor): The features of size batch_size x feature_dims
+
+        Returns:
+            [torch.tensor]: features with added tensor of ones at the end, size batch_size x feature_dims+1
+        """
+        bias_tensor = torch.ones((features.shape[0], 1))
+        return torch.cat((features, bias_tensor),dim=-1)
+
 
 
     def forward_train_LL(self, x, samples=1):
@@ -39,6 +57,8 @@ class LLVI_network(nn.Module):
         """
         with torch.no_grad():
             features = self.feature_extractor(x)
+            if self.bias:
+                features = self.add_bias(features)
         output = features @ self.sample_ll(samples=samples)
         log_likelihood = F.log_softmax(output, dim=-1) # convert to logprobs
         log_likelihood = torch.mean(log_likelihood, dim=0) # take the mean
@@ -56,6 +76,8 @@ class LLVI_network(nn.Module):
             (torch.Tensor): The log likelihood of class predictions
         """
         features = self.feature_extractor(x)
+        if self.bias:
+            features = self.add_bias(features)
         log_likelihood = F.log_softmax(features @ self.ll_mu, dim=-1)
         return log_likelihood
 
@@ -219,9 +241,11 @@ class LLVI_network(nn.Module):
 
 class LLVI_network_diagonal(LLVI_network):
 
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0) -> None:
-        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
+        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias)
         
+        if self.bias:
+            feature_dim += 1
         self.ll_mu = nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim), requires_grad=True)
         self.ll_log_var = nn.Parameter(init_ll_log_var + torch.randn_like(self.ll_mu), requires_grad=True)
         self.ll_optimizer = optim.SGD([self.ll_mu, self.ll_log_var],lr=lr,momentum=0.8)
@@ -235,10 +259,12 @@ class LLVI_network_diagonal(LLVI_network):
 
 
 class LLVI_network_KFac(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0) -> None:
-        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay)
+    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
+        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias)
 
         # feature dimensions
+        if self.bias:
+            feature_dim += 1
         self.feature_dim = feature_dim
         self.out_dim = out_dim
 
@@ -310,9 +336,11 @@ class LLVI_network_KFac(LLVI_network):
 
 
 class LLVI_network_full_Cov(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0) -> None:
-        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
+        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias)
 
+        if self.bias:
+            feature_dim += 1
         # last-layer mean 
         self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
         # ll covariance
