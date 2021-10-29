@@ -35,7 +35,7 @@ class LLVI_network(nn.Module):
             samples (int, optional): Number of samples to take from the last-layer weight distribution. Defaults to 1.
 
         Returns:
-            (torch.Tensor): The prediction
+            tuple(torch.Tensor, torch.Tensor): The log likelihood of class predictions and the Kl divergence
         """
         with torch.no_grad():
             features = self.feature_extractor(x)
@@ -53,10 +53,11 @@ class LLVI_network(nn.Module):
             x (torch.Tensor): The input data in shape batch_size x feature_dims...
 
         Returns:
-            (torch.Tensor): The prediction
+            (torch.Tensor): The log likelihood of class predictions
         """
         features = self.feature_extractor(x)
-        return features @ self.ll_mu
+        log_likelihood = F.log_softmax(features @ self.ll_mu, dim=-1)
+        return log_likelihood
 
     def sample_ll(self, samples=1):
         raise NotImplementedError
