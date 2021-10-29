@@ -115,7 +115,7 @@ class LLVI_network(nn.Module):
 
 
     def train_model(self, train_loader, n_datapoints, epochs=1, samples=1, train_hyper=False, update_freq=10):
-        def train_fun(data, target):
+        def train_step_fun(data, target):
             # clear gradients
             self.ll_optimizer.zero_grad()
             self.feature_extractor_optimizer.zero_grad()
@@ -130,7 +130,7 @@ class LLVI_network(nn.Module):
             self.feature_extractor_optimizer.step()
             return prediction_loss, kl_loss
 
-        return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=n_datapoints, samples=samples, train_step_fun=train_fun, train_hyper=train_hyper, update_freq=update_freq)
+        return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=n_datapoints, samples=samples, train_step_fun=train_step_fun, train_hyper=train_hyper, update_freq=update_freq)
 
 
     def train_hyper(self, train_loader, n_datapoints, samples):
@@ -152,62 +152,38 @@ class LLVI_network(nn.Module):
 
 
     def train_without_VI(self, train_loader, epochs=1):
-        self.train()
-        epoch_losses = []
-        for epoch in range(epochs):
-            batch_prediction_losses = []
-            for batch_idx, (data, target) in enumerate(train_loader):
-                # clear gradients
-                self.ll_optimizer.zero_grad()
-                self.feature_extractor_optimizer.zero_grad()
-                # compute loss functions
-                log_likelihood = self.forward_ML_estimate(data)
-                prediction_loss = self.loss_fun(log_likelihood, target)
-                loss = prediction_loss
-                # backward pass
-                loss.backward()
-                self.ll_optimizer.step()
-                self.feature_extractor_optimizer.step()
-                # logging
-                with torch.no_grad():
-                    batch_prediction_losses.append(prediction_loss)
-            current_epoch_loss = sum(batch_prediction_losses)/len(batch_prediction_losses)
-            print(f"Finished Epoch {epoch}\n\tmean loss {current_epoch_loss}\n\tmean prediction loss {sum(batch_prediction_losses)/len(batch_prediction_losses)}")
+        def train_step_fun(data, target):
+            # clear gradients
+            self.ll_optimizer.zero_grad()
+            self.feature_extractor_optimizer.zero_grad()
+            # compute loss functions
+            log_likelihood = self.forward_ML_estimate(data)
+            prediction_loss = self.loss_fun(log_likelihood, target)
+            loss = prediction_loss
+            # backward pass
+            loss.backward()
+            self.ll_optimizer.step()
+            self.feature_extractor_optimizer.step()
+            return prediction_loss, torch.tensor([0], dtype=torch.float32)
 
-            epoch_losses.append(current_epoch_loss)
-        return epoch_losses
+        return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=-1, samples=-1, train_step_fun=train_step_fun, train_hyper=False, update_freq=-1)
+        
 
     def train_LL(self, train_loader, n_datapoints, epochs=1, samples=1, train_hyper=False, update_freq=10):
-        self.train()
-        epoch_losses = []
-        for epoch in range(epochs):
-            batch_kl_losses = []
-            batch_prediction_losses = []
-            for batch_idx, (data, target) in enumerate(train_loader):
-                # clear gradients
-                self.ll_optimizer.zero_grad()
-                # compute loss functions
-                log_likelihood, kl_loss = self.forward_train_LL(data, samples=samples)
-                prediction_loss = self.loss_fun(log_likelihood, target)
-                kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
-                loss = prediction_loss + kl_loss
-                # backward pass
-                loss.backward()
-                self.ll_optimizer.step()
-                # logging
-                with torch.no_grad():
-                    batch_kl_losses.append(kl_loss)
-                    batch_prediction_losses.append(prediction_loss)
+        def train_step_fun(data, target):
+            # clear gradients
+            self.ll_optimizer.zero_grad()
+            # compute loss functions
+            log_likelihood, kl_loss = self.forward_train_LL(data, samples=samples)
+            prediction_loss = self.loss_fun(log_likelihood, target)
+            kl_loss = self.tau * kl_loss / n_datapoints # rescale kl_loss
+            loss = prediction_loss + kl_loss
+            # backward pass
+            loss.backward()
+            self.ll_optimizer.step()
+            return prediction_loss, kl_loss
 
-            # update the hyperparameters
-            if train_hyper and (epoch % update_freq) == 0:
-                self.train_hyper(train_loader, n_datapoints, samples)
-
-            current_epoch_loss = (sum(batch_kl_losses) + sum(batch_prediction_losses))/len(batch_prediction_losses)
-            print(f"Finished Epoch {epoch}\n\tmean loss {current_epoch_loss}\n\tmean prediction loss {sum(batch_prediction_losses)/len(batch_prediction_losses)}\n\tmean kl loss {sum(batch_kl_losses)/len(batch_kl_losses)}")
-
-            epoch_losses.append(current_epoch_loss)
-        return epoch_losses
+        return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=n_datapoints, samples=samples, train_step_fun=train_step_fun, train_hyper=train_hyper, update_freq=update_freq)
 
 
 
