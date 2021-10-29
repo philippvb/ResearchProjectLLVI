@@ -263,8 +263,8 @@ class LLVI_network_diagonal(LLVI_network):
 
 
 class LLVI_network_KFac(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
-        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias)
+    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL) -> None:
+        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
 
         # feature dimensions
         if self.bias:
@@ -279,7 +279,7 @@ class LLVI_network_KFac(LLVI_network):
         self.chol_a_log_diag =  nn.Parameter(init_ll_cov_scaling * torch.randn(A_dim, requires_grad=True)) # separate diagonal (log since it has to be positive)
         self.chol_b_lower = nn.Parameter(init_ll_cov_scaling * torch.randn((B_dim, B_dim), requires_grad=True))
         self.chol_b_log_diag = nn.Parameter(init_ll_cov_scaling * torch.randn(B_dim, requires_grad=True))
-        self.optimizer = optim.SGD([self.ll_mu, self.chol_a_lower, self.chol_a_log_diag, self.chol_b_lower, self.chol_b_log_diag],lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
+        self.ll_optimizer = optim.SGD([self.ll_mu, self.chol_a_lower, self.chol_a_log_diag, self.chol_b_lower, self.chol_b_log_diag],lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
 
 
     def get_ll_cov(self):
