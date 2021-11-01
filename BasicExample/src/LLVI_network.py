@@ -37,12 +37,12 @@ class LLVI_network(nn.Module):
     def save(self, filedir):
         if not os.path.exists(filedir):
             os.makedirs(filedir)
-        filename = "/model.pt"
+        timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        filename = f"/{self.__class__.__name__}_{timestamp}.pt"
         torch.save(self.state_dict(), filedir + filename)
 
-    def load(self, filedir):
-        filename = "/model.pt"
-        self.load_state_dict(torch.load(filedir + filename))
+    def load(self, filename):
+        self.load_state_dict(torch.load(filename))
 
     def loss_fun_categorical(self, pred, target, mean=True):
         output = F.log_softmax(pred, dim=-1) # convert to logprobs
