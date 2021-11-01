@@ -4,6 +4,8 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
 from enum import Enum
+from datetime import datetime
+import os
 
 class Loss(str, Enum):
     CATEGORICAL = "categorical"
@@ -28,9 +30,19 @@ class LLVI_network(nn.Module):
         self.tau = tau
         self.feature_extractor_optimizer = optim.SGD(self.feature_extractor.parameters(), lr=lr, momentum=0.8, weight_decay=wdecay)
 
-        self.prior_mu = torch.full((feature_dim, out_dim), fill_value=prior_mu, requires_grad=True, dtype=torch.float32)
-        self.prior_log_var = torch.full((feature_dim, out_dim), fill_value=prior_log_var, requires_grad=True, dtype=torch.float32)
+        self.prior_mu = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=prior_mu, requires_grad=True, dtype=torch.float32))
+        self.prior_log_var = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=prior_log_var, requires_grad=True, dtype=torch.float32))
         self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var], lr=lr, momentum=0.8) # optimizer for prior
+
+    def save(self, filedir):
+        if not os.path.exists(filedir):
+            os.makedirs(filedir)
+        filename = "/model.pt"
+        torch.save(self.state_dict(), filedir + filename)
+
+    def load(self, filedir):
+        filename = "/model.pt"
+        self.load_state_dict(torch.load(filedir + filename))
 
     def loss_fun_categorical(self, pred, target, mean=True):
         output = F.log_softmax(pred, dim=-1) # convert to logprobs
