@@ -6,6 +6,7 @@ from tqdm import tqdm
 from enum import Enum
 from datetime import datetime
 import os
+import math
 
 class Loss(str, Enum):
     CATEGORICAL = "categorical"
@@ -14,9 +15,9 @@ class Loss(str, Enum):
 
 
 class LLVI_network(nn.Module):
-    """Base class for Last-Layer Variational Inference Networks (LLVI), categorical networks.
+    """Base class for Last-Layer Variational Inference Networks (LLVI).
     """
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL, data_log_var=-1) -> None:
         super(LLVI_network, self).__init__()
         self.bias = bias
         if self.bias:
@@ -32,7 +33,8 @@ class LLVI_network(nn.Module):
 
         self.prior_mu = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=prior_mu, requires_grad=True, dtype=torch.float32))
         self.prior_log_var = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=prior_log_var, requires_grad=True, dtype=torch.float32))
-        self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var], lr=lr, momentum=0.8) # optimizer for prior
+        self.data_log_var = nn.Parameter(torch.tensor([data_log_var], dtype=torch.float32), requires_grad=True) # the log variance of the data
+        self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var, self.data_log_var], lr=lr, momentum=0.8) # optimizer for prior
 
     def save(self, filedir):
         if not os.path.exists(filedir, exist_ok=True):
@@ -51,9 +53,21 @@ class LLVI_network(nn.Module):
         return F.nll_loss(output, target, reduction="mean")
 
     def loss_fun_regression(self, pred, target, mean=True):
+        """Returns the negative log likelihood of the target (true) data given
+        the prediction in the gaussian case/regression. Scaled by 1/datapoints.
+
+        Args:
+            pred (torch.Tensor): the prediction
+            target (torch.Tensor): the target data
+            mean (bool, optional): If true, assumes multiple predictions in dim 0 and averages over them. Defaults to True.
+
+        Returns:
+            torch.Tensor: The negative log-likelihood
+        """
         if mean:
             pred = torch.mean(pred, dim=0) # take the mean
-        return F.mse_loss(pred, target)
+        squared_diff = F.mse_loss(pred, target)
+        return 0.5 * torch.log(2 * math.pi * torch.exp(0.5 * self.data_log_var)) + 0.5 * squared_diff / torch.exp(self.data_log_var)
 
     def forward(self, x, samples=1):
         features = self.feature_extractor(x)
@@ -364,8 +378,8 @@ class LLVI_network_KFac(LLVI_network):
 
 
 class LLVI_network_full_Cov(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=False, loss=Loss.CATEGORICAL) -> None:
-        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=False, loss=Loss.CATEGORICAL, data_log_var=-1) -> None:
+        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss, data_log_var=data_log_var)
 
         if self.bias:
             feature_dim += 1
