@@ -8,7 +8,7 @@ from datetime import datetime
 import os
 import math
 
-class Loss(str, Enum):
+class Log_likelihood_type(str, Enum):
     CATEGORICAL = "categorical"
     MSE = "mse"
 
@@ -17,16 +17,20 @@ class Loss(str, Enum):
 class LLVI_network(nn.Module):
     """Base class for Last-Layer Variational Inference Networks (LLVI).
     """
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL, data_log_var=-1) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL, data_log_var=-1) -> None:
         super(LLVI_network, self).__init__()
         self.bias = bias
         if self.bias:
             feature_dim += 1
         self.feature_extractor: nn.Module = feature_extractor
-        if loss == Loss.CATEGORICAL:
+
+        self.log_likelihood_type = loss
+        if loss == Log_likelihood_type.CATEGORICAL:
             self.loss_fun = self.loss_fun_categorical
-        elif loss == Loss.MSE:
+        elif loss == Log_likelihood_type.MSE:
             self.loss_fun = self.loss_fun_regression
+        else:
+            raise ValueError("Log likelihood function not implemented")
 
         self.tau = tau
         self.feature_extractor_optimizer = optim.SGD(self.feature_extractor.parameters(), lr=lr, momentum=0.8, weight_decay=wdecay)
@@ -45,6 +49,20 @@ class LLVI_network(nn.Module):
 
     def load(self, filename):
         self.load_state_dict(torch.load(filename))
+
+    def add_bias(self, features):
+        """Adds a bias feature to the end of a tensor
+
+        Args:
+            features (torch.tensor): The features of size batch_size x feature_dims
+
+        Returns:
+            [torch.tensor]: features with added tensor of ones at the end, size batch_size x feature_dims+1
+        """
+        bias_tensor = torch.ones((features.shape[0], 1))
+        return torch.cat((features, bias_tensor),dim=-1)
+
+# ----------------- Loss functions --------------------------------------------
 
     def loss_fun_categorical(self, pred, target, mean=True):
         output = F.log_softmax(pred, dim=-1) # convert to logprobs
@@ -67,7 +85,9 @@ class LLVI_network(nn.Module):
         if mean:
             pred = torch.mean(pred, dim=0) # take the mean
         squared_diff = F.mse_loss(pred, target)
-        return 0.5 * torch.log(2 * math.pi * torch.exp(0.5 * self.data_log_var)) + 0.5 * squared_diff / torch.exp(self.data_log_var)
+        return 0.5 * (math.log(2 * math.pi) + self.data_log_var + squared_diff / torch.exp(self.data_log_var))
+
+# ----------------- Forward pass ----------------------------------------------
 
     def forward(self, x, samples=1):
         features = self.feature_extractor(x)
@@ -76,20 +96,6 @@ class LLVI_network(nn.Module):
         output = features @ self.sample_ll(samples=samples)
         kl_loss = self.KL_div()
         return output, kl_loss
-
-    def add_bias(self, features):
-        """Adds a bias feature to the end of a tensor
-
-        Args:
-            features (torch.tensor): The features of size batch_size x feature_dims
-
-        Returns:
-            [torch.tensor]: features with added tensor of ones at the end, size batch_size x feature_dims+1
-        """
-        bias_tensor = torch.ones((features.shape[0], 1))
-        return torch.cat((features, bias_tensor),dim=-1)
-
-
 
     def forward_train_LL(self, x, samples=1):
         """Forward pass for Training just the last layer
@@ -125,11 +131,42 @@ class LLVI_network(nn.Module):
         output = features @ self.ll_mu
         return output
 
+# ----------------- Predictions -----------------------------------------------
+    @torch.no_grad()
+    def predict(self, x):
+        if self.log_likelihood_type == Log_likelihood_type.MSE:
+            return self.predict_regression(x)
+        elif self.log_likelihood_type == Log_likelihood_type.CATEGORICAL:
+            return self.predict_categorical(x)
+        else:
+            raise ValueError("The prediction method is not implemented")
+
+    def predict_regression(self, x):
+        """Returns a normal distribution over the prediction for the given input data.
+
+        Args:
+            x (torch.Tensor): input data, shape: batch_size x input_dim
+
+        Returns:
+            tuple(torch.tensor, torch.tensor): The mean and covariance matrix of the normal distribution
+        """
+        ll_cov = self.get_ll_cov()
+        features = self.feature_extractor(x)
+        post_mean = torch.flatten(features @ self.ll_mu)
+        features_t = ll_cov @ torch.transpose(features, 0, 1)
+        post_cov = features @ ll_cov @ torch.transpose(features, 0, 1) + torch.exp(self.data_log_var)
+        return post_mean, post_cov
+
+
+# ----------------- Required implementation for the subclass ------------------
+
     def sample_ll(self, samples=1):
         raise NotImplementedError
 
     def KL_div(self):
         raise NotImplementedError
+
+# ----------------- Training loops --------------------------------------------
 
     def train_wrapper(self, epochs, train_loader, train_hyper, update_freq, n_datapoints, samples, train_step_fun):
         self.train()
@@ -229,6 +266,7 @@ class LLVI_network(nn.Module):
         return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=n_datapoints, samples=samples, train_step_fun=train_step_fun, train_hyper=train_hyper, update_freq=update_freq)
 
 
+# ----------------- Testing loops ---------------------------------------------
 
     def test(self, test_loader, samples=5):
         test_losses = []
@@ -271,7 +309,7 @@ class LLVI_network(nn.Module):
 
 class LLVI_network_diagonal(LLVI_network):
 
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL) -> None:
         super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
         
         if self.bias:
@@ -300,7 +338,7 @@ class LLVI_network_diagonal(LLVI_network):
 
 
 class LLVI_network_KFac(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Loss.CATEGORICAL) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL) -> None:
         super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
 
         # feature dimensions
@@ -378,7 +416,7 @@ class LLVI_network_KFac(LLVI_network):
 
 
 class LLVI_network_full_Cov(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=False, loss=Loss.CATEGORICAL, data_log_var=-1) -> None:
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=False, loss=Log_likelihood_type.CATEGORICAL, data_log_var=-1) -> None:
         super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss, data_log_var=data_log_var)
 
         if self.bias:
