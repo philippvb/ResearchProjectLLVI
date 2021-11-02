@@ -10,6 +10,7 @@ import math
 
 class Log_likelihood_type(str, Enum):
     CATEGORICAL = "categorical"
+    CATEGORICAL_2_CLASSES = "categorical_2_classes"
     MSE = "mse"
 
 
@@ -29,6 +30,8 @@ class LLVI_network(nn.Module):
             self.loss_fun = self.loss_fun_categorical
         elif loss == Log_likelihood_type.MSE:
             self.loss_fun = self.loss_fun_regression
+        elif loss == Log_likelihood_type.CATEGORICAL_2_CLASSES:
+            self.loss_fun = self.loss_fun_categorical_2_classes
         else:
             raise ValueError("Log likelihood function not implemented")
 
@@ -70,6 +73,14 @@ class LLVI_network(nn.Module):
             output = torch.mean(output, dim=0) # take the mean
         return F.nll_loss(output, target, reduction="mean")
 
+    def loss_fun_categorical_2_classes(self, pred, target, mean=True):
+        prob_class_0 = F.sigmoid(pred, dim=-1)
+        if mean:
+            prob_class_0 = torch.mean(prob_class_0, dim=0) # take the mean
+        log_prob_class_0 = torch.log(torch.multiply(prob_class_0, 1 - target))
+        log_prob_class_1 = torch.log(torch.multiply(1 - prob_class_0, target))
+        return torch.mean(torch.cat((log_prob_class_0, log_prob_class_1)))
+        
     def loss_fun_regression(self, pred, target, mean=True):
         """Returns the negative log likelihood of the target (true) data given
         the prediction in the gaussian case/regression. Scaled by 1/datapoints.
@@ -156,6 +167,9 @@ class LLVI_network(nn.Module):
         features_t = ll_cov @ torch.transpose(features, 0, 1)
         post_cov = features @ ll_cov @ torch.transpose(features, 0, 1) + torch.exp(self.data_log_var)
         return post_mean, post_cov
+
+    def predict_softmax_classification(self, x):
+        pass
 
 
 # ----------------- Required implementation for the subclass ------------------
