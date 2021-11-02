@@ -84,7 +84,7 @@ class LLVI_network(nn.Module):
         """
         if mean:
             pred = torch.mean(pred, dim=0) # take the mean
-        squared_diff = F.mse_loss(pred, target)
+        squared_diff = torch.mean(torch.square(pred - target))
         return 0.5 * (math.log(2 * math.pi) + self.data_log_var + squared_diff / torch.exp(self.data_log_var))
 
 # ----------------- Forward pass ----------------------------------------------
@@ -189,7 +189,7 @@ class LLVI_network(nn.Module):
 
             current_epoch_loss = torch.mean(kl_loss + prediction_loss)
             digits = 2
-            pbar.set_description(f"Loss:{round(current_epoch_loss.item(), digits)}, PredLoss:{round(torch.mean(prediction_loss).item(), digits)}, KLLoss:{round(torch.mean(kl_loss).item(), digits)}")
+            pbar.set_description(f"Loss:{round(current_epoch_loss.item(), digits)}, Data LogLik:{round(torch.mean(prediction_loss).item(), digits)}, KL Loss:{round(torch.mean(kl_loss).item(), digits)}")
             epoch_losses.append(current_epoch_loss)
         return epoch_losses
 
@@ -335,6 +335,15 @@ class LLVI_network_diagonal(LLVI_network):
         p_mu = torch.flatten(self.prior_mu)
         p = torch.distributions.MultivariateNormal(p_mu, p_std)
         return torch.distributions.kl_divergence(q, p)
+
+    def get_ll_cov(self):
+        """Create the covariance matrix
+
+        Returns:
+            torch.tensor: The covariance matrix
+        """
+        return torch.diag(torch.flatten(torch.exp(self.ll_log_var)))
+
 
 
 class LLVI_network_KFac(LLVI_network):
