@@ -294,6 +294,7 @@ class LLVI_network_KFac(LLVI_network):
             feature_dim += 1
         self.feature_dim = feature_dim
         self.out_dim = out_dim
+        self.ll_n_parameters = feature_dim * out_dim
 
         # last-layer mean 
         self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
@@ -352,7 +353,7 @@ class LLVI_network_KFac(LLVI_network):
         log_determinant = self.get_log_det()
         trace = torch.sum(torch.divide(torch.diagonal(self.get_ll_cov()), torch.flatten(torch.exp(self.prior_log_var))))
         scalar_prod = torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var)))
-        kl_div = 0.5 * (log_determinant - self.ll_mu.shape[0] + trace + scalar_prod)
+        kl_div = 0.5 * (log_determinant - self.ll_n_parameters + trace + scalar_prod)
         if kl_div <= 0: # sanity check
             print("kl_div", kl_div.item())
             print("logdet", log_determinant.item(),"trace", trace.item(),"scalar", scalar_prod.item())
@@ -363,22 +364,25 @@ class LLVI_network_KFac(LLVI_network):
 
 
 class LLVI_network_full_Cov(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True) -> None:
-        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=False, loss=Loss.CATEGORICAL) -> None:
+        super().__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
 
         if self.bias:
             feature_dim += 1
+        self.feature_dim = feature_dim
+        self.out_dim = out_dim
+        self.ll_n_parameters = feature_dim * out_dim
         # last-layer mean 
         self.ll_mu =  nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim, requires_grad=True))
         # ll covariance
         cov_dim = feature_dim*out_dim
         self.cov_lower = nn.Parameter(init_ll_cov_scaling * (torch.randn((cov_dim, cov_dim), requires_grad=True))) # lower triangular matrix without diagonal
         self.cov_log_diag =  nn.Parameter(init_ll_log_var + torch.randn(cov_dim, requires_grad=True)) # separate diagonal (log since it has to be positive)
-        self.optimizer = optim.SGD([self.ll_mu, self.cov_lower, self.cov_log_diag], lr=lr,momentum=0.8) # init optimizer here in oder to get all the parameters in
+        self.ll_optimizer = optim.SGD([self.ll_mu, self.cov_lower, self.cov_log_diag], lr=lr,momentum=0.8) # init optimizer here in oder to get all the parameters in
 
     def get_cov_chol(self):
-        cov_lower_diag = torch.tril(self.chol_a_lower, diagonal=-1)
-        cov = cov_lower_diag + torch.diag(torch.exp(self.chol_a_log_diag))
+        cov_lower_diag = torch.tril(self.cov_lower, diagonal=-1)
+        cov = cov_lower_diag + torch.diag(torch.exp(self.cov_log_diag))
         return cov
 
     def get_ll_cov(self):
@@ -404,7 +408,7 @@ class LLVI_network_full_Cov(LLVI_network):
         log_determinant = self.get_log_det()
         trace = torch.sum(torch.divide(torch.diagonal(self.get_ll_cov()), torch.flatten(torch.exp(self.prior_log_var))))
         scalar_prod = torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var)))
-        kl_div = 0.5 * (log_determinant - self.ll_mu.shape[0] + trace + scalar_prod)
+        kl_div = 0.5 * (log_determinant - self.ll_n_parameters + trace + scalar_prod)
         if kl_div <= 0: # sanity check
             print("kl_div", kl_div.item())
             print("logdet", log_determinant.item(),"trace", trace.item(),"scalar", scalar_prod.item())
