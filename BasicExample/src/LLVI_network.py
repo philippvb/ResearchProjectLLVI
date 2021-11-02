@@ -35,7 +35,7 @@ class LLVI_network(nn.Module):
         self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var], lr=lr, momentum=0.8) # optimizer for prior
 
     def save(self, filedir):
-        if not os.path.exists(filedir):
+        if not os.path.exists(filedir, exist_ok=True):
             os.makedirs(filedir)
         timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
         filename = f"/{self.__class__.__name__}_{timestamp}.pt"
@@ -265,13 +265,24 @@ class LLVI_network_diagonal(LLVI_network):
         self.ll_mu = nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim), requires_grad=True)
         self.ll_log_var = nn.Parameter(init_ll_log_var + torch.randn_like(self.ll_mu), requires_grad=True)
         self.ll_optimizer = optim.SGD([self.ll_mu, self.ll_log_var],lr=lr,momentum=0.8)
+        self.ll_n_parameters = feature_dim * out_dim
 
     def sample_ll(self, samples=1):
         std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
         return self.ll_mu + std
 
     def KL_div(self):
-        return 0.5 * (torch.sum(self.prior_log_var) - torch.sum(self.ll_log_var) - self.ll_mu.shape[0] + torch.sum(torch.exp(self.ll_log_var - self.prior_log_var)) + torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var))))
+        div = 0.5 * (torch.sum(self.prior_log_var) - torch.sum(self.ll_log_var) - self.ll_n_parameters + torch.sum(torch.exp(self.ll_log_var - self.prior_log_var)) + torch.sum(torch.div(torch.square(self.prior_mu - self.ll_mu), torch.exp(self.prior_log_var))))
+        return div
+
+    def KL_div_torch(self):
+        q_std = torch.diag(torch.flatten(torch.exp(self.ll_log_var)))
+        q_mu = torch.flatten(self.ll_mu)
+        q = torch.distributions.MultivariateNormal(q_mu, q_std)
+        p_std = torch.diag(torch.flatten(torch.exp(self.prior_log_var)))
+        p_mu = torch.flatten(self.prior_mu)
+        p = torch.distributions.MultivariateNormal(p_mu, p_std)
+        return torch.distributions.kl_divergence(q, p)
 
 
 class LLVI_network_KFac(LLVI_network):
