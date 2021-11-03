@@ -74,12 +74,18 @@ class LLVI_network(nn.Module):
         return F.nll_loss(output, target, reduction="mean")
 
     def loss_fun_categorical_2_classes(self, pred, target, mean=True):
-        prob_class_0 = F.sigmoid(pred, dim=-1)
+        prob_class_0 = torch.sigmoid(pred)
         if mean:
             prob_class_0 = torch.mean(prob_class_0, dim=0) # take the mean
-        log_prob_class_0 = torch.log(torch.multiply(prob_class_0, 1 - target))
-        log_prob_class_1 = torch.log(torch.multiply(1 - prob_class_0, target))
-        return torch.mean(torch.cat((log_prob_class_0, log_prob_class_1)))
+        # log_prob_class_0 = torch.multiply(torch.log(prob_class_0), 1 - target)
+        # log_prob_class_1 = torch.multiply(torch.log(1 - prob_class_0), target)
+        # nll = - torch.mean(torch.cat((log_prob_class_0, log_prob_class_1)))
+
+        probs = torch.log(torch.hstack((prob_class_0, 1-prob_class_0)))
+        nll_pyt = F.nll_loss(probs, target, reduction="mean")
+        if torch.isnan(nll_pyt):
+            pass
+        return nll_pyt
         
     def loss_fun_regression(self, pred, target, mean=True):
         """Returns the negative log likelihood of the target (true) data given
@@ -105,6 +111,8 @@ class LLVI_network(nn.Module):
         if self.bias: # add bias of ones
             features = self.add_bias(features)
         output = features @ self.sample_ll(samples=samples)
+        if torch.any(torch.isnan(output)):
+            pass
         kl_loss = self.KL_div()
         return output, kl_loss
 
@@ -148,7 +156,9 @@ class LLVI_network(nn.Module):
         if self.log_likelihood_type == Log_likelihood_type.MSE:
             return self.predict_regression(x)
         elif self.log_likelihood_type == Log_likelihood_type.CATEGORICAL:
-            return self.predict_categorical(x)
+            return self.predict_softmax_classification(x)
+        elif self.log_likelihood_type == Log_likelihood_type.CATEGORICAL_2_CLASSES:
+            return self.predict_sigmoid_classification(x)
         else:
             raise ValueError("The prediction method is not implemented")
 
@@ -163,13 +173,40 @@ class LLVI_network(nn.Module):
         """
         ll_cov = self.get_ll_cov()
         features = self.feature_extractor(x)
-        post_mean = torch.flatten(features @ self.ll_mu)
-        features_t = ll_cov @ torch.transpose(features, 0, 1)
-        post_cov = features @ ll_cov @ torch.transpose(features, 0, 1) + torch.exp(self.data_log_var)
-        return post_mean, post_cov
+        pred_mean = torch.flatten(features @ self.ll_mu)
+        pred_cov = features @ ll_cov @ torch.transpose(features, 0, 1) + torch.exp(self.data_log_var)
+        return pred_mean, pred_cov
 
     def predict_softmax_classification(self, x):
-        pass
+        # TODO: implement probit approximation: https://arxiv.org/abs/2010.02709#
+        ll_cov = self.get_ll_cov()
+        features = self.feature_extractor(x)
+        pred_mean = torch.flatten(features @ self.ll_mu)
+        pred_cov =  torch.diagonal(features @ ll_cov @ torch.transpose(features, 0, 1)) # we have no data noise
+        # here we have to probably slice the covariance matrix for each output or append the features two times
+        return torch.softmax(self.probit_approx(pred_mean, pred_cov), dim=-1)
+
+
+    def predict_sigmoid_classification(self, x):
+        """Predicts the binary sigmoid classification for the given input data with the probit approximation.
+
+        Args:
+            x (torch.Tensor): input data, shape: batch_size x input_dim
+
+        Returns:
+            torch.Tensor: probability for class 0, shape: batch_size x 1
+        """
+        ll_cov = self.get_ll_cov()
+        features = self.feature_extractor(x)
+        pred_mean = torch.flatten(features @ self.ll_mu)
+        pred_cov =  torch.diagonal(features @ ll_cov @ torch.transpose(features, 0, 1)) # we have no data noise
+        return torch.sigmoid(self.probit_approx(pred_mean, pred_cov))
+
+    def probit_approx(self, mean, cov):
+        """Probit approximation given a mean and a covariance
+        """
+        return mean / torch.sqrt(1 + math.pi * cov / 8)
+
 
 
 # ----------------- Required implementation for the subclass ------------------
