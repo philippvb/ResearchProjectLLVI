@@ -52,7 +52,7 @@
 \section{General Variational Inference}
     The general form of the ELBO is:
     \begin{align*}
-        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n p(y_i \vert f(x_i))] - D_{KL}(q(w_l) \Vert p(w_l))\\
+        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n \log{p(y_i \vert f_{w_l}(x_i))}] - D_{KL}(q(w_l) \Vert p(w_l))\\
     \end{align*}
 
   \subsection{Likelihood for categorical data}
@@ -64,6 +64,20 @@
       If we have just one true class $l$ and one-hot encoded, we have:
       \begin{align*}
           = f_w(x_{i_l})
+      \end{align*}
+
+    \subsection{Likelihood for Regression}
+      We have that $p(y \vert f_{w_l}(x)) \sim \mathcal{N}(y,
+      f_{w_l}(x), \alpha^2)$. The log-likelihood of a normal is:
+      \begin{align*}
+        \sum_i \log{\mathcal{N}(y_i,f_{w_l}(x_i), \alpha^2)}
+        &= \sum_i -\frac{1}{2}\log{2\pi \alpha} - \frac{1}{2\alpha^2} (y- f_{w_l}(x))^2\\
+        &= -\frac{n}{2}\log{2\pi \alpha} - \frac{1}{2\alpha^2} \sum_i (y- f_{w_l}(x))^2
+      \end{align*}
+      For the multivariate case:
+      \begin{align*}
+        \log{\mathcal{N}(y,f_{w_l}(x), \Sigma)}
+        &= -\frac{k}{2}\log{2\pi} - \frac{1}{2} log(\vert \Sigma \vert) - \frac{1}{2}(y - f_{w_l}(x))^T \Sigma (y - f_{w_l}(x))
       \end{align*}
 
   \section{Predictions}
@@ -154,6 +168,7 @@
         \begin{align}\label{eq:CholKron}
           A \otimes B = L_AL_A^T \otimes L_BL_B^T = (L_A \otimes L_B) (L_A \otimes L_B)^T
         \end{align}
+        % see: http://www.math.uwaterloo.ca/~hwolkowi/henry/reports/kronthesisschaecke04.pdf , page 8
         
       \subsubsection{Determinant together with Cholesky}
           The logdeterminant for the KL divergence with \ref{eq:KronDet} is:
