@@ -1,5 +1,6 @@
 import torch
 from torch import nn
+from torch._C import dtype
 import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
@@ -13,6 +14,7 @@ class Log_likelihood_type(str, Enum):
     CATEGORICAL = "categorical"
     CATEGORICAL_2_CLASSES = "categorical_2_classes"
     MSE = "mse"
+    MSE_NO_NOISE = "mse_no_noise"
 
 
 
@@ -33,6 +35,8 @@ class LLVI_network(nn.Module):
             self.loss_fun = self.loss_fun_regression
         elif loss == Log_likelihood_type.CATEGORICAL_2_CLASSES:
             self.loss_fun = self.loss_fun_categorical_2_classes
+        elif loss == Log_likelihood_type.MSE_NO_NOISE:
+            self.loss_fun = self.loss_fun_regression_no_noise
         else:
             raise ValueError("Log likelihood function not implemented")
 
@@ -41,8 +45,11 @@ class LLVI_network(nn.Module):
 
         self.prior_mu = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=prior_mu, requires_grad=True, dtype=torch.float32))
         self.prior_log_var = nn.Parameter(torch.full((feature_dim, out_dim), fill_value=prior_log_var, requires_grad=True, dtype=torch.float32))
-        self.data_log_var = nn.Parameter(torch.tensor([data_log_var], dtype=torch.float32), requires_grad=True) # the log variance of the data
-        self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var, self.data_log_var], lr=lr, momentum=0.8) # optimizer for prior
+        hyperparams = [self.prior_mu, self.prior_log_var]
+        if data_log_var and (loss == Log_likelihood_type.MSE):
+            self.data_log_var = nn.Parameter(torch.tensor([data_log_var], dtype=torch.float32), requires_grad=True) # the log variance of the data
+            hyperparams += [self.data_log_var]
+        self.prior_optimizer = optim.SGD(hyperparams, lr=lr, momentum=0.8) # optimizer for prior
 
         self.model_config = {"feature_dim": feature_dim, "out_dim": out_dim, "prior_mu": prior_mu, "prior_log_var": prior_log_var, "lr": lr,
         "tau": tau, "wdecay": wdecay, "bias": bias, "loss": loss.value, "data_log_var": data_log_var}
@@ -55,12 +62,31 @@ class LLVI_network(nn.Module):
         model_filename = "/model.pt"
         torch.save(self.state_dict(), filedir + model_filename)
         # save config
-        with open(filedir + "/model_config.json", "w") as f:
-            json.dump(self.model_config, f)
+        self.save_config(filedir)
         return filedir
 
-    def load(self, filename):
-        self.load_state_dict(torch.load(filename))
+    def load(self, filedir):
+        self.load_state_dict(torch.load(filedir + "/model.pt"))
+
+    def save_ml_estimate(self, filedir):
+        timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
+        filedir += "/" + timestamp
+        os.makedirs(filedir)
+        # save model
+        feature_extractor_filename = filedir + "/feature_extractor.pt"
+        torch.save(self.feature_extractor.state_dict(), feature_extractor_filename)
+        torch.save(self.ll_mu, filedir + "/ll_mu.pt")
+        # save config
+        self.save_config(filedir)
+        return filedir
+
+    def save_config(self, filedir):
+        with open(filedir + "/model_config.json", "w") as f:
+            json.dump(self.model_config, f)
+
+    def load_ml_estimate(self, filedir):
+        self.feature_extractor.load_state_dict(torch.load(filedir + "/feature_extractor.pt"))
+        self.ll_mu = nn.Parameter(torch.load(filedir + "/ll_mu.pt"), requires_grad=True)
 
     def add_bias(self, features):
         """Adds a bias feature to the end of a tensor
@@ -112,6 +138,11 @@ class LLVI_network(nn.Module):
             pred = torch.mean(pred, dim=0) # take the mean
         squared_diff = torch.mean(torch.square(pred - target))
         return 0.5 * (math.log(2 * math.pi) + self.data_log_var + squared_diff / torch.exp(self.data_log_var))
+
+    def loss_fun_regression_no_noise(self, pred, target, mean=True):
+        if mean:
+            pred = torch.mean(pred, dim=0) # take the mean
+        return F.mse_loss(pred, target)
 
 # ----------------- Forward pass ----------------------------------------------
 
@@ -171,7 +202,7 @@ class LLVI_network(nn.Module):
         else:
             raise ValueError("The prediction method is not implemented")
 
-    def predict_regression(self, x):
+    def predict_regression(self, x, noise=True):
         """Returns a normal distribution over the prediction for the given input data.
 
         Args:
@@ -183,7 +214,9 @@ class LLVI_network(nn.Module):
         ll_cov = self.get_ll_cov()
         features = self.feature_extractor(x)
         pred_mean = torch.flatten(features @ self.ll_mu)
-        pred_cov = features @ ll_cov @ torch.transpose(features, 0, 1) + torch.exp(self.data_log_var)
+        pred_cov = features @ ll_cov @ torch.transpose(features, 0, 1)
+        if noise:
+            pred_cov+= torch.exp(self.data_log_var)
         return pred_mean, pred_cov
 
     def predict_softmax_classification(self, x):
@@ -328,6 +361,9 @@ class LLVI_network(nn.Module):
 
         return self.train_wrapper(epochs=epochs, train_loader=train_loader, n_datapoints=n_datapoints, samples=samples, train_step_fun=train_step_fun, train_hyper=train_hyper, update_freq=update_freq)
 
+    def update_prior_mu(self, value):
+        self.prior_mu = nn.Parameter(value.detach().clone())
+
 
 # ----------------- Testing loops ---------------------------------------------
 
@@ -372,8 +408,8 @@ class LLVI_network(nn.Module):
 
 class LLVI_network_diagonal(LLVI_network):
 
-    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL) -> None:
-        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
+    def __init__(self, feature_extractor, feature_dim, out_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_log_var=0, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL, data_log_var=0) -> None:
+        super(LLVI_network_diagonal, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss, data_log_var=data_log_var)
         
         if self.bias:
             feature_dim += 1
@@ -382,7 +418,7 @@ class LLVI_network_diagonal(LLVI_network):
         self.ll_optimizer = optim.SGD([self.ll_mu, self.ll_log_var],lr=lr,momentum=0.8)
         self.ll_n_parameters = feature_dim * out_dim
 
-        self.model_config.update({"init_ll_mu": init_ll_mu, "init_ll_log_var": init_ll_log_var})
+        self.model_config.update({"kernel_name": "Diagonal Gaussian","init_ll_mu": init_ll_mu, "init_ll_log_var": init_ll_log_var})
 
     def sample_ll(self, samples=1):
         std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
@@ -412,8 +448,8 @@ class LLVI_network_diagonal(LLVI_network):
 
 
 class LLVI_network_KFac(LLVI_network):
-    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL) -> None:
-        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss)
+    def __init__(self, feature_extractor, feature_dim, out_dim, A_dim, B_dim, prior_mu=0, prior_log_var=1, init_ll_mu=0, init_ll_cov_scaling=1, lr=1e-2, tau=1, wdecay=0, bias=True, loss=Log_likelihood_type.CATEGORICAL, data_log_var=0) -> None:
+        super(LLVI_network_KFac, self).__init__(feature_extractor, feature_dim, out_dim, prior_mu=prior_mu, prior_log_var=prior_log_var, lr=lr, tau=tau, wdecay=wdecay, bias=bias, loss=loss, data_log_var=data_log_var)
 
         # feature dimensions
         if self.bias:
@@ -431,7 +467,8 @@ class LLVI_network_KFac(LLVI_network):
         self.chol_b_log_diag = nn.Parameter(init_ll_cov_scaling * torch.randn(B_dim, requires_grad=True))
         self.ll_optimizer = optim.SGD([self.ll_mu, self.chol_a_lower, self.chol_a_log_diag, self.chol_b_lower, self.chol_b_log_diag],lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
 
-        self.model_config.update({"init_ll_mu": init_ll_mu, "init_ll_cov_scaling": init_ll_cov_scaling})
+
+        self.model_config.update({"kernel_name": "Kronecker Factorization", "init_ll_mu": init_ll_mu, "init_ll_cov_scaling": init_ll_cov_scaling})
 
     def get_ll_cov(self):
         """Create the covariance matrix
@@ -507,7 +544,7 @@ class LLVI_network_full_Cov(LLVI_network):
         self.cov_log_diag =  nn.Parameter(init_ll_log_var + torch.randn(cov_dim, requires_grad=True)) # separate diagonal (log since it has to be positive)
         self.ll_optimizer = optim.SGD([self.ll_mu, self.cov_lower, self.cov_log_diag], lr=lr,momentum=0.8) # init optimizer here in oder to get all the parameters in
 
-        self.model_config.update({"init_ll_mu": init_ll_mu, "init_ll_log_var": init_ll_log_var, "init_ll_cov_scaling": init_ll_cov_scaling})
+        self.model_config.update({"kernel_name": "Full Covariance", "init_ll_mu": init_ll_mu, "init_ll_log_var": init_ll_log_var, "init_ll_cov_scaling": init_ll_cov_scaling})
 
     def get_cov_chol(self):
         cov_lower_diag = torch.tril(self.cov_lower, diagonal=-1)
