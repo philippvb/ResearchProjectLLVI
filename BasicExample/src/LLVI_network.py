@@ -4,9 +4,10 @@ import torch.optim as optim
 import torch.nn.functional as F
 from tqdm import tqdm
 from enum import Enum
-from datetime import datetime
+from datetime import datetime, time
 import os
 import math
+import json
 
 class Log_likelihood_type(str, Enum):
     CATEGORICAL = "categorical"
@@ -43,12 +44,20 @@ class LLVI_network(nn.Module):
         self.data_log_var = nn.Parameter(torch.tensor([data_log_var], dtype=torch.float32), requires_grad=True) # the log variance of the data
         self.prior_optimizer = optim.SGD([self.prior_mu, self.prior_log_var, self.data_log_var], lr=lr, momentum=0.8) # optimizer for prior
 
+        self.model_config = {"feature_dim": feature_dim, "out_dim": out_dim, "prior_mu": prior_mu, "prior_log_var": prior_log_var, "lr": lr,
+        "tau": tau, "wdecay": wdecay, "bias": bias, "loss": loss.value, "data_log_var": data_log_var}
+
     def save(self, filedir):
-        if not os.path.exists(filedir, exist_ok=True):
-            os.makedirs(filedir)
         timestamp = datetime.now().strftime("%d-%m-%Y_%H-%M-%S")
-        filename = f"/{self.__class__.__name__}_{timestamp}.pt"
-        torch.save(self.state_dict(), filedir + filename)
+        filedir += "/" + timestamp
+        os.makedirs(filedir)
+        # save model
+        model_filename = "/model.pt"
+        torch.save(self.state_dict(), filedir + model_filename)
+        # save config
+        with open(filedir + "/model_config.json", "w") as f:
+            json.dump(self.model_config, f)
+        return filedir
 
     def load(self, filename):
         self.load_state_dict(torch.load(filename))
@@ -246,6 +255,7 @@ class LLVI_network(nn.Module):
 
 
     def train_model(self, train_loader, n_datapoints, epochs=1, samples=1, train_hyper=False, update_freq=10):
+        self.model_config.update({"trained model only, epochs": epochs, "train_samples": samples, "train_hyper": train_hyper, "hyper update freq": update_freq})
         def train_step_fun(data, target):
             # clear gradients
             self.ll_optimizer.zero_grad()
@@ -283,6 +293,7 @@ class LLVI_network(nn.Module):
 
 
     def train_without_VI(self, train_loader, epochs=1):
+        self.model_config.update({"trained without VI, epochs": epochs})
         def train_step_fun(data, target):
             # clear gradients
             self.ll_optimizer.zero_grad()
@@ -301,6 +312,7 @@ class LLVI_network(nn.Module):
 
 
     def train_LL(self, train_loader, n_datapoints, epochs=1, samples=1, train_hyper=False, update_freq=10):
+        self.model_config.update({"trained Last_layer only , epochs": epochs, "ll_samples": samples, "ll_hyper": train_hyper, "hyper update freq": update_freq})
         def train_step_fun(data, target):
             # clear gradients
             self.ll_optimizer.zero_grad()
@@ -370,6 +382,8 @@ class LLVI_network_diagonal(LLVI_network):
         self.ll_optimizer = optim.SGD([self.ll_mu, self.ll_log_var],lr=lr,momentum=0.8)
         self.ll_n_parameters = feature_dim * out_dim
 
+        self.model_config.update({"init_ll_mu": init_ll_mu, "init_ll_log_var": init_ll_log_var})
+
     def sample_ll(self, samples=1):
         std = torch.multiply(torch.exp(0.5 * self.ll_log_var),  torch.randn((samples, ) + self.ll_log_var.size()))
         return self.ll_mu + std
@@ -417,6 +431,7 @@ class LLVI_network_KFac(LLVI_network):
         self.chol_b_log_diag = nn.Parameter(init_ll_cov_scaling * torch.randn(B_dim, requires_grad=True))
         self.ll_optimizer = optim.SGD([self.ll_mu, self.chol_a_lower, self.chol_a_log_diag, self.chol_b_lower, self.chol_b_log_diag],lr=lr,momentum=0.5) # init optimizer here in oder to get all the parameters in
 
+        self.model_config.update({"init_ll_mu": init_ll_mu, "init_ll_cov_scaling": init_ll_cov_scaling})
 
     def get_ll_cov(self):
         """Create the covariance matrix
@@ -491,6 +506,8 @@ class LLVI_network_full_Cov(LLVI_network):
         self.cov_lower = nn.Parameter(init_ll_cov_scaling * (torch.randn((cov_dim, cov_dim), requires_grad=True))) # lower triangular matrix without diagonal
         self.cov_log_diag =  nn.Parameter(init_ll_log_var + torch.randn(cov_dim, requires_grad=True)) # separate diagonal (log since it has to be positive)
         self.ll_optimizer = optim.SGD([self.ll_mu, self.cov_lower, self.cov_log_diag], lr=lr,momentum=0.8) # init optimizer here in oder to get all the parameters in
+
+        self.model_config.update({"init_ll_mu": init_ll_mu, "init_ll_log_var": init_ll_log_var, "init_ll_cov_scaling": init_ll_cov_scaling})
 
     def get_cov_chol(self):
         cov_lower_diag = torch.tril(self.cov_lower, diagonal=-1)
