@@ -70,7 +70,40 @@
                 \includegraphics[width=\textwidth]{images/Regression/kernel_comparison.jpg}
             \end{figure}
         \end{frame}
+        
+        
+        \begin{frame}
+            
+            \begin{itemize}
+                \item  Calibration\\
+                \frametitle{MNIST}
+                \begin{figure}
+                    \includegraphics[width=0.8\textwidth]{images/MNIST/calibration.jpg}
+                \end{figure}
+                \item Out of distribution confidence \\[10pt]
+                \centering
+                \begin{tabular}{c|c|c|c}
+                    & Baseline & Diagonal & Laplace \\
+                    \hline
+                    MNIST & 99 & 98 & \\
+                    Fashion MNIST & 50 & 28 & 
+                \end{tabular}
+            \end{itemize}
+        \end{frame}
+        
+        
+        \begin{frame}
+            two moons
+        \end{frame}
 
+        \begin{frame}
+            \frametitle{Next steps}
+            \begin{itemize}
+                \item more kernels
+                \item more complex datasets (e.g. CIFAR-10)
+                \item collapsed Variational Bound
+            \end{itemize}
+        \end{frame}
 
 
         % \begin{frame}

@@ -1,6 +1,7 @@
 files
 models
 *.pdf
+test.*
 
 
 # Byte-compiled / optimized / DLL files
