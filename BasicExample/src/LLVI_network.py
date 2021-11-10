@@ -26,6 +26,9 @@ class LLVI_network(nn.Module):
         self.bias = bias
         if self.bias:
             feature_dim += 1
+
+        self.feature_dim = feature_dim
+        self.out_dim = out_dim
         self.feature_extractor: nn.Module = feature_extractor
 
         self.log_likelihood_type = loss
@@ -223,10 +226,17 @@ class LLVI_network(nn.Module):
         # TODO: implement probit approximation: https://arxiv.org/abs/2010.02709#
         ll_cov = self.get_ll_cov()
         features = self.feature_extractor(x)
-        pred_mean = torch.flatten(features @ self.ll_mu)
-        pred_cov =  torch.diagonal(features @ ll_cov @ torch.transpose(features, 0, 1)) # we have no data noise
-        # here we have to probably slice the covariance matrix for each output or append the features two times
-        return torch.softmax(self.probit_approx(pred_mean, pred_cov), dim=-1)
+        pred_mean = torch.zeros(x.shape[0], self.out_dim)
+        pred_cov = torch.zeros(x.shape[0], self.out_dim)
+        for class_index in range(self.out_dim):
+            pred_mean[:, class_index]  = torch.flatten(features @ self.ll_mu[:, class_index])
+            class_cov = ll_cov[self.feature_dim * class_index : self.feature_dim * class_index  + self.feature_dim, self.feature_dim * class_index : self.feature_dim * class_index  + self.feature_dim]
+            left = features @ class_cov
+            pred_cov[:, class_index] = torch.diagonal(left @ torch.transpose(features, 0, 1))
+
+        predictions = torch.softmax(self.probit_approx(pred_mean, pred_cov), dim=-1)
+        return predictions
+
 
 
     def predict_sigmoid_classification(self, x):
@@ -454,8 +464,6 @@ class LLVI_network_KFac(LLVI_network):
         # feature dimensions
         if self.bias:
             feature_dim += 1
-        self.feature_dim = feature_dim
-        self.out_dim = out_dim
         self.ll_n_parameters = feature_dim * out_dim
 
         # last-layer mean 
