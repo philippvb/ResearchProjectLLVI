@@ -1,8 +1,9 @@
+from sklearn.covariance import log_likelihood
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
-from torch import optim
-
+from torch import log_, optim
+from tqdm import tqdm
 class Net(nn.Module):
     """Basic CNN for MNIST taken from https://nextjournal.com/gkoehler/pytorch-mnist.
     Removed the Last fully connected layer for LLVI.
@@ -46,23 +47,28 @@ class NonBayesianNet(nn.Module):
         x = F.relu(self.fc1(x))
         x = F.dropout(x, training=self.training)
         x = self.fc2(x)
-        return F.log_softmax(x, dim=1)
+        return x
+
+    def predict(self, x):
+        return F.softmax(self.forward(x), dim=-1)
 
     def train_model(self, train_loader, epochs=1):
         self.train()
         losses = []
-        for epoch in range(epochs):
+        pbar = tqdm(range(epochs))
+        for epoch in pbar:
             batch_loss = []
             for batch_idx, (data, target) in enumerate(train_loader):
                 self.optimizer.zero_grad()
-                log_likelihood = self.forward(data)
+                output = self.forward(data)
+                log_likelihood = F.log_softmax(output, dim=1)
                 loss = self.loss_fun(log_likelihood, target)
                 loss.backward()
                 with torch.no_grad():
                     batch_loss.append(loss)
                 self.optimizer.step()
             epoch_loss = (sum(batch_loss))/len(batch_loss)
-            print(f"Finished Epoch {epoch}\n\tmean loss {epoch_loss}\n")
+            pbar.set_description(f"Loss: {round(epoch_loss.item(), 2)}")
 
             losses.append(epoch_loss)
         return losses
@@ -75,7 +81,8 @@ class NonBayesianNet(nn.Module):
         with torch.no_grad():
             for data, target in test_loader:
                 output = self.forward(data)
-                test_loss += self.loss_fun(output, target).item()
+                log_likelihood = F.log_softmax(output, dim=1)
+                test_loss += self.loss_fun(log_likelihood, target).item()
                 pred = output.data.max(1, keepdim=True)[1]
                 correct += pred.eq(target.data.view_as(pred)).sum()
             test_loss /= len(test_loader.dataset)
@@ -85,25 +92,6 @@ class NonBayesianNet(nn.Module):
                 100. * correct / len(test_loader.dataset)))
         return test_losses
 
-    def test_confidence(self, test_loader, ood_test_loader):
-        self.eval()
-        confidence_batch = []
-        with torch.no_grad():
-            for data, target in test_loader:
-                log_likelihood = self.forward(data)
-                output_probs = torch.exp(log_likelihood)
-                pred, _ = torch.max(output_probs, dim=1) # confidence in choice
-                confidence_batch.append(torch.mean(pred))
-            print(f"The mean confidence for in distribution data is: {sum(confidence_batch)/len(confidence_batch)}")
-
-        ood_confidence_batch = []
-        with torch.no_grad():
-            for data, target in ood_test_loader:
-                log_likelihood= self.forward(data)
-                output_probs = torch.exp(log_likelihood)
-                pred, _ = torch.max(output_probs, dim=1) # confidence in choice
-                ood_confidence_batch.append(torch.mean(pred))
-            print(f"The mean confidence for out-of distribution data is: {sum(ood_confidence_batch)/len(ood_confidence_batch)}")
 
 
 
