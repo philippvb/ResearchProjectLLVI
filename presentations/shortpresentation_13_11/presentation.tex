@@ -1,4 +1,5 @@
 \documentclass{beamer}
+\usepackage{graphicx}
 \usetheme{Singapore}
 
 \def\UrlBreaks{\do\/\do-} % URL breaks
@@ -8,7 +9,7 @@
 \newcommand*{\rom}[1]{\expandafter\@slowromancap\romannumeral #1@}
 \makeatother
 
-\title{Status Research Project Last-Layer Variational Inference}
+\title{Research Project Last-Layer Variational Inference}
 \author{Philipp von Bachmann}
 \institute{University of Tübingen}
 \date{\today}
@@ -19,7 +20,8 @@
         \begin{frame}
             \titlepage
         \end{frame}
-
+        
+        \section{Setup}
         \begin{frame}
             \frametitle{Idea}
             \begin{itemize}
@@ -30,14 +32,31 @@
             \end{itemize}
         \end{frame}
         
-        \section{Math}
+        \section{Math and Training}
         \begin{frame}
             \frametitle{Variational Inference}
-            ELBO formulation for training:
-            \begin{equation}
-                \log{p(y \vert x, M)} \geq \mathbb{E}_{q_{\phi}(\theta)}[\sum_{i=1}^N \log{p(y_i \vert f_{\theta}(x_i))}] - D_{KL}(q_{\phi}(\theta) \Vert p_{M}(\theta))
-            \end{equation}
-            $M$ model, $\theta$ network weights, $\phi$ parametrizes the variational distribution $q$ and $M$ of the prior $p$ over $\theta$
+            $M$ model, $\theta$ network weights, $\phi$ parametrizes the variational distribution $q$ and $M$ of the prior $p$ over $\theta$\\
+            ELBO formulation:
+            \begin{equation*}
+                \log{p(y \vert x, M)} \geq \sum_{i=1}^N \mathbb{E}_{q_{\phi}(\theta)}[\log{p(y_i \vert f_{\theta}(x_i), M)}] - D_{KL}(q_{\phi}(\theta) \Vert p_{M}(\theta))
+            \end{equation*}
+        \end{frame}
+
+        \begin{frame}
+            \frametitle{Training}
+            \begin{equation*}
+                \sum_{i=1}^N \mathbb{E}_{q_{\phi}(\theta)}[\log{p(y_i \vert f_{\theta}(x_i), M)}] - \tau \cdot D_{KL}(q_{\phi}(\theta) \Vert p_{M}(\theta))
+            \end{equation*}
+            \begin{itemize}
+                \item $\tau$ controls balance of log-likelihood and KL Divergence
+                \item approximate expectation with Monte-Carlo sampling
+                \item different training modes:
+                    \begin{itemize}
+                        \item whole model jointly with VI
+                        \item whole model with ''normal loss''
+                        \item last layer with VI and keep other layers fixed
+                    \end{itemize}
+            \end{itemize}
         \end{frame}
 
         \begin{frame}
@@ -51,13 +70,14 @@
             \end{itemize}
         \end{frame}
 
+
         \begin{frame}
             \frametitle{Hyperparameter Tuning}
             optimize model hyperparameters $M$
             \begin{itemize}
                 \item normally done by Type-\rom{2} Maximum Likelihood estimation, $p(y \vert x, M)$
                 \item ELBO gives lower bound on ML $\rightarrow$ maximize
-                \item alternate between normal training and hyperparameter optimization
+                \item alternate between training model weights $\theta$ and hyperparameters $M$
             \end{itemize}
 
         \end{frame}
@@ -76,32 +96,40 @@
             
             \begin{itemize}
                 \item  Calibration\\
-                \frametitle{MNIST}
-                \begin{figure}
-                    \includegraphics[width=0.8\textwidth]{images/MNIST/calibration.jpg}
-                \end{figure}
+                    \frametitle{MNIST}
+                    \begin{figure}
+                        \includegraphics[width=0.8\textwidth]{images/MNIST/calibration.jpg}
+                    \end{figure}
                 \item Out of distribution confidence \\[10pt]
-                \centering
-                \begin{tabular}{c|c|c|c}
-                    & Baseline & Diagonal & Laplace \\
-                    \hline
-                    MNIST & 99 & 98 & \\
-                    Fashion MNIST & 50 & 28 & 
-                \end{tabular}
+                    \centering
+                    \scalebox{0.9}{
+                        \begin{tabular}{c|c|c}
+                            & Baseline & Diagonal\\
+                            \hline
+                            MNIST & 99 & 98 \\
+                            MNIST horizontal flip & 87 & 72 \\
+                            Fashion MNIST & 50 & 28
+                        \end{tabular}
+                    }
+
             \end{itemize}
         \end{frame}
         
         
         \begin{frame}
-            two moons
+            \frametitle{Two Moons}
+            \begin{figure}
+                \includegraphics[width=\textwidth]{images/TwoMoons/comparison.jpg}
+            \end{figure}
         \end{frame}
-
+        
+        \section{Next steps}
         \begin{frame}
             \frametitle{Next steps}
             \begin{itemize}
-                \item more kernels
                 \item more complex datasets (e.g. CIFAR-10)
                 \item collapsed Variational Bound
+                \item more kernels
             \end{itemize}
         \end{frame}
 

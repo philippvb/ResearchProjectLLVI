@@ -1,5 +1,5 @@
 import sys
-sys.path.append('P:/Dokumente/3 Uni/WiSe2122/ResearchProject/ResearchProjectLLVI')
+sys.path.append('/Users/philippvonbachmann/Documents/University/ResearchProject/ResearchProjectLLVI')
 
 from sklearn import datasets
 import numpy as np
@@ -14,7 +14,7 @@ def test(model, bayesian=True):
     plt.figure()
     plt.xlabel('x1')
     plt.ylabel('x2')
-    test_rng = np.linspace(-2, 3, n_test_datapoints)
+    test_rng = np.linspace(-3, 5, n_test_datapoints)
     X1_test, X2_test = np.meshgrid(test_rng, test_rng)
     X_test = torch.tensor(np.stack([X1_test.ravel(), X2_test.ravel()]).T, dtype=torch.float)
 
@@ -28,6 +28,7 @@ def test(model, bayesian=True):
         #     lik_class_0 = torch.mean(lik_class_0, dim=0)
         if bayesian:
             lik = model.predict(X_test)
+            lik = torch.softmax(lik, dim=-1)
         else:
             lik = model.forward_ML_estimate(X_test)
             lik = torch.sigmoid(lik)
@@ -65,7 +66,7 @@ class FC_Net(nn.Module):
         self.fc1 = nn.Linear(2, 20)
         self.fc2 = nn.Linear(20, 20)
         self.fc3 = nn.Linear(20, 40)
-        self.nll = nn.ReLU()
+        self.nll = nn.Tanh()
     def forward(self, x):
         h1 = self.nll(self.fc1(x))
         h2 = self.nll(self.fc2(h1))
@@ -92,21 +93,23 @@ feature_extractor = FC_Net()
 #     tau=10, bias=False
 # )
 
-model = LLVI_network_diagonal(feature_extractor=feature_extractor,
+torch.manual_seed(1)
+model = LLVI_network_full_Cov(feature_extractor=feature_extractor,
 feature_dim=40, out_dim=2,
 prior_mu=0, prior_log_var=-5,
-init_ll_mu=0, init_ll_log_var=-1,# init_ll_cov_scaling=0.1,
-tau=10, lr=1e-3, wdecay=0, bias=False, loss=Log_likelihood_type.CATEGORICAL)
+init_ll_mu=0, init_ll_log_var=0, init_ll_cov_scaling=0.1,
+tau=1, lr=1e-3, wdecay=0.01, bias=False, loss=Log_likelihood_type.CATEGORICAL)
 
 
 
 # for i in range(epochs):
 #     print(model.ll_mu)
 #     model.train_without_VI(list(zip(x,y)), epochs=1)
-model.train_without_VI(list(zip(x,y)), epochs=10)
-test(model, bayesian=False)
-# model.train_LL(list(zip(x,y)), n_datapoints=n_datapoints, epochs=200, samples=1, train_hyper=True, update_freq=2)
-# model.train_model(list(zip(x,y)), n_datapoints=n_datapoints, epochs=100, samples=1, train_hyper=False, update_freq=10)
+# model.train_without_VI(list(zip(x,y)), epochs=200)
+# model.update_prior_mu(model.ll_mu)
+model.train_model(list(zip(x,y)), n_datapoints=n_datapoints, epochs=200, samples=2, train_hyper=False, update_freq=10)
+# model.train_model(list(zip(x,y)), n_datapoints=n_datapoints, epochs=300, samples=3, train_hyper=True, update_freq=10)
+test(model, bayesian=True)
 # test(model, bayesian=True)
 
 
