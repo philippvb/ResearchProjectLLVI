@@ -52,7 +52,7 @@
 \section{General Variational Inference}
     The general form of the ELBO is:
     \begin{align*}
-        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^n \log{p(y_i \vert f_{w_l}(x_i))}] - D_{KL}(q(w_l) \Vert p(w_l))\\
+        & \mathbb{E}_{q(\theta)}[\sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))}] - D_{KL}(q(\theta) \Vert p(\theta))\\
     \end{align*}
 
   \subsection{Likelihood for categorical data}
@@ -67,18 +67,29 @@
       \end{align*}
 
     \subsection{Likelihood for Regression}
-      We have that $p(y \vert f_{w_l}(x)) \sim \mathcal{N}(y,
-      f_{w_l}(x), \alpha^2)$. The log-likelihood of a normal is:
+      We have that $p(y \vert f_{\theta}(x)) \sim \mathcal{N}(y,
+      f_{\theta}(x), \alpha^2)$. The log-likelihood of a normal is:
       \begin{align*}
-        \sum_i \log{\mathcal{N}(y_i,f_{w_l}(x_i), \alpha^2)}
-        &= \sum_i -\frac{1}{2}\log{2\pi \alpha} - \frac{1}{2\alpha^2} (y- f_{w_l}(x))^2\\
-        &= -\frac{n}{2}\log{2\pi \alpha} - \frac{1}{2\alpha^2} \sum_i (y- f_{w_l}(x))^2
+        \sum_i \log{\mathcal{N}(y_i,f_{\theta}(x_i), \alpha^2)}
+        &= \sum_i -\frac{1}{2}\log{2\pi \alpha} - \frac{1}{2\alpha^2} (y- f_{\theta}(x))^2\\
+        &= -\frac{n}{2}\log{2\pi \alpha} - \frac{1}{2\alpha^2} \sum_i (y- f_{\theta}(x))^2
       \end{align*}
       For the multivariate case:
       \begin{align*}
-        \log{\mathcal{N}(y,f_{w_l}(x), \Sigma)}
-        &= -\frac{k}{2}\log{2\pi} - \frac{1}{2} log(\vert \Sigma \vert) - \frac{1}{2}(y - f_{w_l}(x))^T \Sigma (y - f_{w_l}(x))
+        \log{\mathcal{N}(y,f_{\theta}(x), \Sigma)}
+        &= -\frac{k}{2}\log{2\pi} - \frac{1}{2} \log(\vert \Sigma \vert) - \frac{1}{2}(y - f_{\theta}(x))^T \Sigma (y - f_{\theta}(x))
       \end{align*}
+
+      \subsubsection{Closed form}
+        \begin{align*}
+          \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A)}]
+          &\propto \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [(\phi_{X}\theta - y)^T A (\phi_{X}\theta - y)]\\
+          &= \mathbb{E}_{\phi_X \theta \sim N(\phi_X \mu, \phi_X^T \Sigma \phi_X)} [(\phi_{X}\theta - y)^T A (\phi_{X}\theta - y)]\\
+          &= \mathbb{E}_{\phi_X \theta -y \sim N(\phi_X \mu - y, \phi_X^T \Sigma \phi_X + \alpha)} [(\phi_{X}\theta - y)^T A (\phi_{X}\theta - y)]\\
+          &= \mathbb{E}_{f\sim N(\phi_X \mu - y, \phi_X^T \Sigma \phi_X + \alpha)} [f^T A f]\\
+          &= Tr(A (\phi_X^T \Sigma \phi_X + \alpha)) + (\phi_X \mu - y)^T A (\phi_X \mu - y)
+        \end{align*}
+        
 
   \section{Predictions}
   \begin{align*}
@@ -92,7 +103,7 @@
     \subsubsection{Batch size}
       If we have $B$ equally sized batches with size $b$, then we need to scale the ELBO by
       \begin{align*}
-        & \mathbb{E}_{q(w_l)}[\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{B} D_{KL}(q(w_l) \Vert p(w_l))\\
+        & \mathbb{E}_{q(\theta)}[\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{B} D_{KL}(q(\theta) \Vert p(\theta))\\
       \end{align*}
       for each parameter update according to: "Practical Variational Inference
       for Neural Networks"
@@ -104,8 +115,8 @@
       If we use a sum for our likelihood-loss, the values could get too big,
       that's why we need to scale the KL div also by the batch size $b$ which results in
       \begin{align*}
-        & \mathbb{E}_{q(w_l)}[\frac{1}{b}\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{B *b} D_{KL}(q(w_l) \Vert p(w_l))\\
-        &= \mathbb{E}_{q(w_l)}[\frac{1}{b}\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{N} D_{KL}(q(w_l) \Vert p(w_l))\\
+        & \mathbb{E}_{q(\theta)}[\frac{1}{b}\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{B *b} D_{KL}(q(\theta) \Vert p(\theta))\\
+        &= \mathbb{E}_{q(\theta)}[\frac{1}{b}\sum_{i=1}^b p(y_i \vert f(x_i))] - \frac{1}{N} D_{KL}(q(\theta) \Vert p(\theta))\\
       \end{align*}
       where $N$ is the total number of samples-
 
@@ -114,15 +125,15 @@
   \subsection{KL-Divergence Gaussian}
     The KL-Div between two Gaussians is:
     \begin{align*}
-      D_{KL}(q(w_l) \Vert p(w_l))
-      %&= \int_{- \infty}^\infty q(w_l) log(\frac{p(w_l)}{q(w_l)}) dw_l\\
-      &= \mathbb{E}_{q(w_l)} [log(\frac{p(w_l)}{q(w_l)})] \\
-      &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}} exp(-\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)))\\
-      &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}} exp(-\frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)))] \\
-      &= \mathbb{E}_{q(w_l)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
-      &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}}) + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
-      &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -\frac{1}{2} (w_l - \mu_q)^T \Sigma^{-1}_q (w_l - \mu_q)\\
-      & + \frac{1}{2} (w_l - \mu_p)^T \Sigma^{-1}_p (w_l - \mu_p)] \\
+      D_{KL}(q(\theta) \Vert p(\theta))
+      %&= \int_{- \infty}^\infty q(\theta) log(\frac{p(\theta)}{q(\theta)}) d\theta\\
+      &= \mathbb{E}_{q(\theta)} [log(\frac{p(\theta)}{q(\theta)})] \\
+      &= \mathbb{E}_{q(\theta)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}} exp(-\frac{1}{2} (\theta - \mu_q)^T \Sigma^{-1}_q (\theta - \mu_q)))\\
+      &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}} exp(-\frac{1}{2} (\theta - \mu_p)^T \Sigma^{-1}_p (\theta - \mu_p)))] \\
+      &= \mathbb{E}_{q(\theta)} [log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_q)}}) -\frac{1}{2} (\theta - \mu_q)^T \Sigma^{-1}_q (\theta - \mu_q)\\
+      &- log(\frac{1}{\sqrt{(2 \pi)^{\frac{n}{2}} det(\Sigma_p)}}) + \frac{1}{2} (\theta - \mu_p)^T \Sigma^{-1}_p (\theta - \mu_p)] \\
+      &= \mathbb{E}_{q(\theta)} [\frac{1}{2}log(\frac{det(\Sigma_p)}{det(\Sigma_q)}) -\frac{1}{2} (\theta - \mu_q)^T \Sigma^{-1}_q (\theta - \mu_q)\\
+      & + \frac{1}{2} (\theta - \mu_p)^T \Sigma^{-1}_p (\theta - \mu_p)] \\
       % see for example:
       % http://stanford.edu/~jduchi/projects/general_notes.pdf
       % https://stats.stackexchange.com/questions/60680/kl-divergence-between-two-multivariate-gaussians
@@ -130,10 +141,10 @@
   \end{align*}
 
   \subsection{Diagonal}
-      We set the prior $p(w_l)$ as well as $q$ to a diagonal gaussian, this
+      We set the prior $p(\theta)$ as well as $q$ to a diagonal gaussian, this
       means the Kl-Divergence can be further simplified to:
       \begin{align}
-          % &= \mathbb{E}_{q(w_l)} [\frac{1}{2}log(\prod_i\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{1}{2} \sum_i - (w_{l_i} - \mu_{q_i})^2 \Sigma^{-1}_{q_i} + (w_{l_i} - \mu_{p_i})^2 \Sigma^{-1}_{p_i}]\\
+          % &= \mathbb{E}_{q(\theta)} [\frac{1}{2}log(\prod_i\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{1}{2} \sum_i - (w_{l_i} - \mu_{q_i})^2 \Sigma^{-1}_{q_i} + (w_{l_i} - \mu_{p_i})^2 \Sigma^{-1}_{p_i}]\\
           &= \frac{1}{2} \sum_{i=1}^n log(\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) - n + \frac{\Sigma_{q_i}}{\Sigma_{p_i}}  +  (\mu_{p_i} - \mu_{q_i})^2 \Sigma^{-1}_{p_i}
       \end{align}
 
