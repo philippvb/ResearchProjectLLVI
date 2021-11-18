@@ -121,8 +121,6 @@ class LLVI_network(nn.Module):
 
         probs = torch.log(torch.hstack((prob_class_0, 1-prob_class_0)))
         nll_pyt = F.nll_loss(probs, target, reduction="mean")
-        if torch.isnan(nll_pyt):
-            pass
         return nll_pyt
         
     def loss_fun_regression(self, pred, target, mean=True):
@@ -146,6 +144,31 @@ class LLVI_network(nn.Module):
         if mean:
             pred = torch.mean(pred, dim=0) # take the mean
         return F.mse_loss(pred, target)
+
+    def data_loglik_regression_closed_form(self, features: torch.Tensor, target: torch.Tensor, mu: torch.Tensor,cov: torch.Tensor, data_var: torch.Tensor):
+        """        
+        Closed form expression for expectation under the parameter distribution
+        of data log likelihood for gaussian likelihood,
+        E_N(theta, mu, cov)[log(N(features @ theta, y, data_var))]
+
+        Args:
+        features (torch.Tensor): features of size batch_size x n_features
+        target (torch.Tensor): target of size batch_size x 1
+        mu (torch.Tensor): mean of the last-layer weights theta
+        cov (torch.Tensor): covariance of the last layer weights theta
+        data_var (torch.Tensor): variance of the data for the data likelihood
+
+        Returns:
+        torch.Tensor: The expected data log likelihood under the model
+        """
+        pred_cov = features @ cov @ torch.transpose(features, 0, 1)
+        pred_mean = features @ mu
+        trace = torch.trace(pred_cov)
+        square_terms = torch.sum(torch.square(pred_mean)) + torch.sum(torch.square(target))
+        error = - 2 * torch.sum(pred_mean @ target)
+        return (trace + square_terms + error) / data_var
+
+
 
 # ----------------- Forward pass ----------------------------------------------
 
