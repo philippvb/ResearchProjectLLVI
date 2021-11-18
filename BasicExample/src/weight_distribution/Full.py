@@ -48,6 +48,7 @@ class FullCovariance(WeightDistribution):
 
     def update_cov(self, new_cov:torch.Tensor) -> None:
         new_cov = new_cov.detach().clone() # make sure we create new matrix
+        assert new_cov.shape == self.get_cov().shape
         cholesky = torch.linalg.cholesky(new_cov)
         log_variance = torch.log(torch.diag(cholesky))
         cov_lower = torch.tril(cholesky, diagonal=-1)

@@ -1,30 +1,18 @@
+import os
+from datetime import datetime
+from enum import Enum
+from typing import List
 
-import dataclasses
-from lib2to3.pytree import Base
-from mimetypes import init
-from typing import Any, List
 import torch
 from torch import nn
-import torch.optim as optim
-import torch.nn.functional as F
-from tqdm import tqdm
-from enum import Enum
-from datetime import datetime, time
-import os
-import math
-import json
-from pydantic.dataclasses import dataclass
-from pydantic import Field, BaseModel, validator
-from abc import ABC, abstractmethod
-import pandas as pd
-from src.log_likelihood import LogLikelihoodMonteCarlo, LogLikelihood
+from src.log_likelihood import LogLikelihood
+from src.network.feature_extractor import FC_Net
 from src.utils.TrainWrapper import Trainwrapper
 from src.weight_distribution import WeightDistribution
-from src.network.feature_extractor import FeatureExtractor
 
 
 class LikApprox(Enum):
-    """Likelihood approximations
+    """Available Likelihood approximations
     """
     MAXIMUMLIKELIHOOD = "ML"
     MONTECARLO = "MC"
@@ -32,14 +20,12 @@ class LikApprox(Enum):
     PROBIT = "PR"
     
 
-
-
 class LLVINetwork(nn.Module):
     """Base class for Last-Layer Variational Inference Networks (LLVI).
     """
 
 
-    def __init__(self, feature_dim: int, out_dim: int, feature_extractor:FeatureExtractor, weight_dist: WeightDistribution, loss_fun:LogLikelihood, prior_mu:int=0, prior_log_var:int=0, tau:int=1e-2, lr: int = 1e-2, optimizer_type: torch.optim.Optimizer = torch.optim.Adam) -> None:
+    def __init__(self, feature_dim: int, out_dim: int, feature_extractor:FC_Net, weight_dist: WeightDistribution, loss_fun:LogLikelihood, prior_mu:int=0, prior_log_var:int=0, tau:int=1e-2, lr: int = 1e-2, optimizer_type: torch.optim.Optimizer = torch.optim.Adam) -> None:
         super().__init__()
         self.loss_fun = loss_fun
         self.feature_dim = feature_dim
@@ -184,7 +170,7 @@ class LLVINetwork(nn.Module):
 
 
     def train_hyper_epoch(self, train_loader:torch.Tensor, n_datapoints:int, method:LikApprox, **method_kwargs) -> None:
-        """Trains the hyperparameters/prior parameters of the VI model
+        """Trains the hyperparameters/prior parameters of the VI model for one epoch
 
         Args:
             train_loader ([type]): Trainingdata loader
