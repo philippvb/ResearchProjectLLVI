@@ -45,3 +45,13 @@ class FullCovariance(WeightDistribution):
             print("logdet", log_determinant.item(),"trace", trace.item(),"scalar", scalar_prod.item())
             raise ValueError("KL div is smaller than 0")
         return kl_div
+
+    def update_cov(self, new_cov:torch.Tensor) -> None:
+        new_cov = new_cov.detach().clone() # make sure we create new matrix
+        cholesky = torch.linalg.cholesky(new_cov)
+        log_variance = torch.log(torch.diag(cholesky))
+        cov_lower = torch.tril(cholesky, diagonal=-1)
+        self.cov_lower = nn.Parameter(cov_lower, requires_grad=True)
+        self.cov_log_diag =  nn.Parameter(log_variance, requires_grad=True)
+        self.optimizer.param_groups[0]["params"] = [self.mu, self.cov_lower, self.cov_log_diag] # update parameters
+
