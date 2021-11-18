@@ -6,6 +6,7 @@ class WeightDistribution(ABC):
         super().__init__()
         self.feature_dim=feature_dim
         self.out_dim = out_dim
+        self.n_parameters = feature_dim * out_dim
 
     
     # ll distribution

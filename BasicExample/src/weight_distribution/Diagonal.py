@@ -3,10 +3,10 @@ import torch
 from torch import nn, optim
 
 class Diagonal(WeightDistribution):
-    def __init__(self, feature_dim:int, out_dim:int, init_ll_mu=0, init_ll_log_var=0, optimizer=optim.SGD, **optim_kwargs) -> None:
+    def __init__(self, feature_dim:int, out_dim:int, init_mu=0, init_log_var=0, optimizer=optim.SGD, **optim_kwargs) -> None:
         super().__init__(feature_dim, out_dim)
-        self.mu = nn.Parameter(init_ll_mu + torch.randn(feature_dim, out_dim), requires_grad=True)
-        self.log_var = nn.Parameter(init_ll_log_var + torch.randn_like(self.mu), requires_grad=True)
+        self.mu = nn.Parameter(init_mu + torch.randn(feature_dim, out_dim), requires_grad=True)
+        self.log_var = nn.Parameter(init_log_var + torch.randn_like(self.mu), requires_grad=True)
         self.optimizer = optimizer([self.mu, self.log_var], **optim_kwargs)
         self.n_parameters = feature_dim * out_dim
 

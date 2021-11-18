@@ -1,12 +1,12 @@
 import torch
 from torch import nn
-from src.network import LLVINetwork, LikApprox
+
 from src.log_likelihood import LogLikelihood
-from src.log_likelihood.Regression import Regression, RegressionNoNoise, ClosedFormRegression
-from pydantic.dataclasses import dataclass
-from dataclasses import field
-from typing import Any
+from src.log_likelihood.Regression import (ClosedFormRegression, Regression, RegressionNoNoise)
+
+from src.network import LikApprox, LLVINetwork
 from src.network.feature_extractor import FeatureExtractor
+
 from src.weight_distribution import WeightDistribution
 
 
@@ -34,7 +34,15 @@ class LLVIRegression(LLVINetwork):
         else:
             raise ValueError(f"Method {method} not implemented")
 
+    def predict(self, x:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        pred_mean, pred_cov = self.forward(x)
+        return pred_mean, pred_cov + torch.exp(self.data_log_var)
+
 class LLVIRegressionNoNoise(LLVINetwork):
     def __init__(self, feature_dim: int, out_dim: int, feature_extractor: FeatureExtractor, weight_dist: WeightDistribution, loss_fun: LogLikelihood, prior_mu: int = 0, prior_log_var: int = 0, tau: int = 0.01, lr: int = 0.01, optimizer_type: torch.optim.Optimizer = torch.optim.Adam) -> None:
         loss_fun = RegressionNoNoise()
         super().__init__(feature_dim, out_dim, feature_extractor, weight_dist, loss_fun, prior_mu=prior_mu, prior_log_var=prior_log_var, tau=tau, lr=lr, optimizer_type=optimizer_type)
+
+    def predict(self, x:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        pred_mean, pred_cov = self.forward(x)
+        return pred_mean, pred_cov
