@@ -27,11 +27,11 @@ class LLVIClassification(LLVINetwork):
             pred_mean, pred_cov = self.forward_multi(x) # multi output
 
         if method == PredictApprox.MONTECARLO:
-            samples = MultivariateNormal(pred_mean, pred_cov).sample((method_kwargs["samples"], ))
+            output_samples = MultivariateNormal(pred_mean, pred_cov).sample((method_kwargs["samples"], ))
             if self.out_dim == 1:
-                return torch.sigmoid(samples, dim=-1).mean(dim=0)
+                return torch.sigmoid(output_samples, dim=-1).mean(dim=0)
             else:
-                return torch.softmax(samples, dim=-1).mean(dim=0)
+                return torch.softmax(output_samples, dim=-1).mean(dim=0)
 
         elif method == PredictApprox.PROBIT:
             if self.out_dim == 1:
