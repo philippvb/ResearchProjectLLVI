@@ -1,10 +1,11 @@
+from turtle import forward
 import torch
 from torch import nn
 
 from src.log_likelihood import LogLikelihood
 from src.log_likelihood.Regression import (ClosedFormRegression, Regression, RegressionNoNoise)
 
-from src.network import LikApprox, LLVINetwork
+from src.network import LikApprox, LLVINetwork, PredictApprox
 from src.network.feature_extractor import FC_Net
 
 from src.weight_distribution import WeightDistribution
@@ -24,6 +25,14 @@ class LLVIRegression(LLVINetwork):
 
     def init_hyperparam_optimizer_with_data_log_var(self, optimizer_type: torch.optim.Optimizer):
         return optimizer_type([self.prior_mu, self.prior_log_var, self.data_log_var], self.lr) # also add the data_log_var
+
+    # forward pass for prediction, not used for training
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.out_dim == 1:
+            return self.forward_single(x)
+        else:
+            return self.forward_multi(x)
+
 
     def compute_prediction_loss(self, data: torch.Tensor, target: torch.Tensor, method: LikApprox, **method_kwargs) -> torch.Tensor:
         if method == LikApprox.CLOSEDFORM:
