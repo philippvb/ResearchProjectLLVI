@@ -89,6 +89,16 @@
           &= \mathbb{E}_{f\sim N(\phi_X \mu - y, \phi_X^T \Sigma \phi_X + \alpha)} [f^T A f]\\
           &= Tr(A (\phi_X^T \Sigma \phi_X + \alpha)) + (\phi_X \mu - y)^T A (\phi_X \mu - y)
         \end{align*}
+
+        \begin{align*}
+          \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+          &\propto \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [(\phi_{X}\theta - y)^T A^{-1} (\phi_{X}\theta - y)]\\
+          &= \mathbb{E}_{\phi_X \theta \sim N(\phi_X \mu, \phi_X^T \Sigma \phi_X)} [(\phi_{X}\theta - y)^T A^{-1} (\phi_{X}\theta - y)]\\
+          &= \mathbb{E}_{f_X \sim N(\phi_X \mu, \phi_X^T \Sigma \phi_X)} [(f_X- y)^T A^{-1} (f_X- y)]\\
+          &= \mathbb{E}_{f_X \sim N(\phi_X \mu, \phi_X^T \Sigma \phi_X)} [f_X^T A^{-1} f_X - 2 f_X^T A^{-1} y + y^T A^{-1} y]\\
+          &= \mathbb{E}_{f_X \sim N(\phi_X \mu, \phi_X^T \Sigma \phi_X)} [f_X^T A^{-1} f_X]- 2 \phi_X \mu A^{-1} y + y^T A^{-1} y\\
+          &= Tr(A^{-1} \phi_X^T \Sigma \phi_X) + (\phi_X \mu)^T A^{-1} (\phi_X \mu) - 2 \phi_X \mu A^{-1} y + y^T A^{-1} y\\
+        \end{align*}
         
 
   \section{Predictions}
@@ -213,6 +223,12 @@
           
         %   for pytorch see: https://pytorch.org/docs/stable/generated/torch.cholesky_inverse.html
 
+\section{Expectation}
+In the ELBO, we sample from:
+$\mathbb{E}_{q(\theta)}[\sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))}]$,
+so with MC, we need to sample the weights from $\mathcal{N}(\theta, \mu, \Sigma)$.
+However during test time, we sample from ${E}_{q(\theta)} [softmax(\Phi(X)\theta)]$
+or $softmax(\Phi(X) E_{q(\theta)}[\theta])$.
 
 
 
