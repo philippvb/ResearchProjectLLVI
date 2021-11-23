@@ -19,12 +19,16 @@ class LLVIRegression(LLVINetwork):
 
         # the log variance of the data
         self.data_log_var = nn.Parameter(torch.tensor([data_log_var], dtype=torch.float32), requires_grad=True)
-        self.prior_optimizer.param_groups.append({'params': self.data_log_var })
+        # reinit the hyperparameter optimizer
+        self.prior_optimizer: torch.optim.Optimizer = self.init_hyperparam_optimizer_with_data_log_var(optimizer_type)
+
+    def init_hyperparam_optimizer_with_data_log_var(self, optimizer_type: torch.optim.Optimizer):
+        return optimizer_type([self.prior_mu, self.prior_log_var, self.data_log_var], self.lr) # also add the data_log_var
 
     def compute_prediction_loss(self, data: torch.Tensor, target: torch.Tensor, method: LikApprox, **method_kwargs) -> torch.Tensor:
         if method == LikApprox.CLOSEDFORM:
             pred_mean, pred_cov = self.forward(data)
-            return self.loss_fun_closed_form(pred_mean, pred_cov, torch.exp(self.data_log_var))
+            return self.loss_fun_closed_form(pred_mean, pred_cov, target, torch.exp(self.data_log_var))
         elif method == LikApprox.MONTECARLO:
             prediction = self.forward_MC(data)
             return self.loss_fun(prediction, target, data_var = torch.exp(self.data_log_var), average=True)
