@@ -26,7 +26,7 @@ class Diagonal(WeightDistribution):
 
     def update_var(self, new_var:torch.Tensor) -> None:
         new_var = new_var.detach().clone() # make sure we create new matrix
-        assert new_var.shape == self.get_cov().shape
+        assert new_var.shape == self.log_var.shape
         self.log_var = nn.Parameter(torch.log(new_var), requires_grad=True)
         self.optimizer.param_groups[0]["params"] = [self.mu, self.log_var] # update parameters
 
