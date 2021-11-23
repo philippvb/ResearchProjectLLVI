@@ -23,3 +23,15 @@ class Diagonal(WeightDistribution):
     def KL_div(self, prior_mu, prior_log_var) -> torch.Tensor:
         div = 0.5 * (torch.sum(prior_log_var) - torch.sum(self.log_var) - self.n_parameters + torch.sum(torch.exp(self.log_var - prior_log_var)) + torch.sum(torch.div(torch.square(prior_mu - self.mu), torch.exp(prior_log_var))))
         return div
+
+    def update_var(self, new_var:torch.Tensor) -> None:
+        new_var = new_var.detach().clone() # make sure we create new matrix
+        assert new_var.shape == self.get_cov().shape
+        self.log_var = nn.Parameter(torch.log(new_var), requires_grad=True)
+        self.optimizer.param_groups[0]["params"] = [self.mu, self.log_var] # update parameters
+
+    def update_mean(self, new_mean: torch.Tensor) -> None:
+        new_mean = new_mean.detach().clone()
+        assert new_mean.shape == self.mu.shape
+        self.mu = nn.Parameter(new_mean, requires_grad=True)
+        self.optimizer.param_groups[0]["params"] = [self.mu, self.log_var] # update parameters

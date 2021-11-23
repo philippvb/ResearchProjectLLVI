@@ -56,3 +56,9 @@ class FullCovariance(WeightDistribution):
         self.cov_log_diag =  nn.Parameter(log_variance, requires_grad=True)
         self.optimizer.param_groups[0]["params"] = [self.mu, self.cov_lower, self.cov_log_diag] # update parameters
 
+    def update_mean(self, new_mean: torch.Tensor) -> None:
+        new_mean = new_mean.detach().clone()
+        assert new_mean.shape == self.mu.shape
+        self.mu = nn.Parameter(new_mean, requires_grad=True)
+        self.optimizer.param_groups[0]["params"] = [self.mu, self.cov_lower, self.cov_log_diag] # update parameters
+
