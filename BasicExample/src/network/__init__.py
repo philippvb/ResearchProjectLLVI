@@ -98,10 +98,30 @@ class LLVINetwork(nn.Module):
         return output
 
     def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.out_dim > 1:
+            return self.forward_multi(x)
+        else:
+            return self.forward_single(x)
+
+    def forward_single(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.feature_extractor(x)
         pred_cov = features @ self.get_ll_cov() @ torch.transpose(features, 0, 1)
         pred_mean = features @ self.get_ll_mu()
         return pred_mean, pred_cov
+
+    def forward_multi(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        features = self.feature_extractor(x)
+        pred_mean = features @ self.get_ll_mu()
+        features_concat = torch.zeros((x.shape[0], self.out_dim, self.feature_dim * self.out_dim))
+        for i in range(self.out_dim):
+            features_concat[:, i, i*self.feature_dim:(i+1) * self.feature_dim] = features
+
+        # features_i = [torch.unsqueeze(torch.cat([torch.zeros_like(features)] * i + [features] + [torch.zeros_like(features)] * (self.out_dim - i - 1), dim=-1), dim=0) for i in range(self.out_dim)]
+        # f = features_i[0]
+        # features_concat = torch.cat(features_i)
+        pred_cov = features_concat @ self.get_ll_cov() @ torch.transpose(features_concat, dim0=1, dim1=-1)
+        return pred_mean, pred_cov
+
 
     # last-layer approximation
     def get_ll_mu(self) -> torch.Tensor:
