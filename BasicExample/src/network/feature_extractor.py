@@ -5,12 +5,10 @@ from typing import List
 class FC_Net(nn.Sequential):
     def __init__(self, layers: List[int], nll = nn.Tanh(), optimizer=optim.SGD, **optim_kwargs):
         layers_container = []
-        for in_dim, out_dim in zip(layers[:-2], layers[1:-1]):
+        for in_dim, out_dim in zip(layers[:-1], layers[1:]):
             layers_container.append(nn.Linear(in_dim, out_dim))
             layers_container.append(nll)
 
-        last_layer = nn.Linear(layers[-2], layers[-1], bias=False)
-        layers_container.append(last_layer)
         super().__init__(*layers_container)
         self.optimizer = optimizer(self.parameters(), **optim_kwargs)
         self.optim_args = optim_kwargs
