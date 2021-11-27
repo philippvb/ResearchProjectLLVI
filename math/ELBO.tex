@@ -232,5 +232,58 @@ or $softmax(\Phi(X) E_{q(\theta)}[\theta])$.
 
 
 
+\section{Single Sample ELBO}
+  The general form of the ELBO is:
+  \begin{align*}
+      \mathbb{E}_{q(\theta)}[\sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))}] - D_{KL}(q(\theta) \Vert p(\theta))\\
+  \end{align*}
+  if we have just one sample the expected log likelihood collapses to a standard likelihood
+  \begin{align*}
+    \sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))} - D_{KL}(q(\theta) \Vert p(\theta))\\
+  \end{align*}
+  with added Noise for the last-layer weights during training
+
+  \subsection{Regression}
+    Assume we have a probability distribution $\theta \sim \mathcal{N}(\mu,
+    \Sigma)$.
+     Thus the forward pass $X\theta$ for a single sample becomes $X
+    (\mu + \Sigma \epsilon)$, so we can rewrite the training objective as
+    $\langle X (\mu + \Sigma \epsilon) - Y, X (\mu + \Sigma \epsilon) - Y\rangle$ and the derivative becomes
+    \begin{align*}
+      &\frac{\partial}{\partial \mu}\langle X (\mu + \Sigma \epsilon) - Y, X (\mu + \Sigma \epsilon) -Y \rangle\\
+      &= \frac{\partial}{\partial \mu}\langle X \mu + X\Sigma \epsilon - Y, X \mu + X\Sigma \epsilon -Y \rangle\\
+      &= 2X^T(X \mu  - Y) + 2 X^T X \Sigma \epsilon
+    \end{align*}
+    Which is the derivative of the normal training loss minus the std deviation
+    of the weights scaled by the covariance of the dimensions
+    The closed form solution would be:
+    \begin{align*}
+      0 &= 2X^T(X \mu  - Y) + 2 X^T X \Sigma \epsilon\\
+      \mu &= (X^T X)^{-1} X^T Y + \Sigma \epsilon
+    \end{align*}
+
+    Observations
+    \begin{itemize}
+      \item For the perfect solution we would just need to offset by the drawn $\epsilon$
+      \item $\epsilon$ could be seen as an per iteration noise to the gradient
+      \item However $\epsilon$ changes every iteration, so to get best $\Sigma$ should be as small as possible
+      \item if in contrast, we would take a large number of samples, $\Sigma$ shouldn't matter at all, because expected $\epsilon$ is 0
+      \item maybe compare to paper 'Stochastic Gradient Descent as Approximate Bayesian Inference'
+    \end{itemize}
+
+    
+    For $\Sigma$:
+    \begin{align*}
+      &\frac{\partial}{\partial \Sigma}\langle X (\mu + \Sigma \epsilon) - Y, X (\mu + \Sigma \epsilon) -Y \rangle\\
+      &= 2X^T(X \mu  - Y) \epsilon^T + 2 X^T X \Sigma \epsilon \epsilon^T\\
+      \Rightarrow \text{set to 0:}\\
+      &0 = 2X^T(X \mu  - Y) \epsilon^T + 2 X^T X \Sigma \epsilon \epsilon^T\\
+      - X^T X \mu \epsilon^T +  X^T Y \epsilon^T &= X^T X \Sigma \epsilon \epsilon^T\\
+      \mu \epsilon^T + (X^T X)^{-1} X^T Y &= \Sigma \epsilon \epsilon^T\\
+      \mu \epsilon^T (\epsilon \epsilon^T)^{-1} + (X^T X)^{-1} X^T Y (\epsilon \epsilon^T)^{-1}&= \Sigma\\
+    \end{align*}
+
+
+
 \end{document}
 
