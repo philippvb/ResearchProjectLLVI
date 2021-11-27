@@ -77,7 +77,6 @@ class ClosedFormRegression(LogLikelihood):
         trace = torch.trace(pred_cov)
         square_terms = torch.sum(torch.square(pred_mean)) + torch.sum(torch.square(target))
         error = - 2 * torch.sum(pred_mean * target)
-        # return 0.5 * (ClosedFormRegression.scalar +  data_log_var + (trace + square_terms + error) / data_var / batch_size)
-        return data_log_var + (trace + square_terms + error) / data_var / batch_size
+        return 0.5 * (ClosedFormRegression.scalar +  data_log_var + (trace + square_terms + error) / data_var / batch_size)
 
 
