@@ -1,7 +1,7 @@
 import sys
 import torch
 sys.path.append("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample")
-from datasets.Regression.toydataset import create_dataset, sinus_mapping, dataset_to_loader, visualize_predictions
+from datasets.Regression.toydataset import create_dataset, sinus_mapping, dataset_to_loader, visualize_predictions, visualize_features
 from src.network.feature_extractor import FC_Net
 from src.network import LikApprox
 
@@ -51,8 +51,9 @@ train_set, test_set = dataset_to_loader(x_train, y_train, x_test, y_test , batch
 # net.train_without_VI(list(zip(x_batch, y_batch)), epochs=100)
 # net.train_model(list(zip(x_batch, y_batch)), epochs=500, n_datapoints=512, samples=1, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
 
-net.train_without_VI(train_set, epochs=100)
-net.train_model(train_set, epochs=500, n_datapoints=256, samples=1, method=LikApprox.CLOSEDFORM, train_hyper=True, update_freq=5)
+# net.train_without_VI(train_set, epochs=100)
+# net.train_model(train_set, epochs=500, n_datapoints=256, samples=1, method=LikApprox.CLOSEDFORM, train_hyper=True, update_freq=5)
+
 
 from matplotlib import pyplot as plt
 plt.rcParams.update({
@@ -62,6 +63,7 @@ plt.rcParams.update({
     "font.sans-serif": ["Helvetica"]})
 fig, (ax1, ax2) = plt.subplots(2)
 visualize_predictions(net, ax1, x_train, y_train, x_test, y_test, data_noise=data_noise)
+visualize_features(net, ax1, x_test)
 ax1.set_title("Closed form")
 
 net = LLVIRegression(100, 1, feature_extractor, dist, prior_log_var=-6,
@@ -72,10 +74,12 @@ train_set, test_set = dataset_to_loader(x_train, y_train, x_test, y_test , batch
 # net.train_model(list(zip(x_batch, y_batch)), epochs=500, n_datapoints=512, samples=1, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
 
 net.train_without_VI(train_set, epochs=100)
-net.train_model(train_set, epochs=1000, n_datapoints=256, samples=10, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
+net.train_model(train_set, epochs=500, n_datapoints=256, samples=10, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
 visualize_predictions(net, ax2, x_train, y_train, x_test, y_test, data_noise=data_noise)
 ax2.set_title("MC")
 
 # plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Regression/cf_mc_comparison/comparison_hyperparam_opt.jpg")
-plt.show()
 # print(net.predict(x_batch[0]))
+visualize_features(net, ax2, x_test)
+
+plt.show()
