@@ -70,3 +70,10 @@ def visualize_predictions(model, ax, x_train, y_train, x_test, y_test, noise=Tru
     ax.set_ylim(torch.min(y_test) - 2, torch.max(y_test) + 2)
     # ax.set_title(model.model_config["kernel_name"])
     ax.set_ylabel("y")
+
+@torch.no_grad()
+def visualize_features(model, ax, x_test):
+    features = model.feature_extractor(torch.unsqueeze(x_test, dim=1)).detach()
+    n_features = features.shape[1]
+    for i in range(n_features):
+        ax.plot(x_test, features[:, i] * model.weight_distribution.mu[i], alpha=0.1)
