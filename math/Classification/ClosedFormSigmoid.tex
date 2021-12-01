@@ -1,0 +1,50 @@
+\documentclass[a4paper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{pgfplots}
+\usepackage{amsmath, enumerate, amssymb, multirow, fancyhdr, color, graphicx, lastpage, listings, tikz, pdflscape, subfigure, float, polynom, hyperref, tabularx, forloop, geometry, listings, fancybox, tikz, forest, tabstackengine, cancel}
+\input kvmacros
+\geometry{a4paper,left=3cm, right=3cm, top=3cm, bottom=3cm}
+\pagestyle {fancy}
+
+
+\begin{document}
+\section{Problem}
+    Want to estimate the data log likelihood for binary classification case:
+    \begin{align}
+        \mathbb{E}_{\theta \sim \mathcal{N}(\mu, \Sigma)}[\log(P(Y \vert X, \theta))]
+        = \sum_i \mathbb{E}_{\theta \sim \mathcal{N}(\mu, \Sigma)}[\log P(Y_i \vert X_i , \theta)] \\
+        = \sum_i \mathbb{E}_{\theta \sim \mathcal{N}(\mu, \Sigma)}[\log(\sigma(\Phi(X_i)\cdot\theta)^{Y_i} \cdot (1-\sigma(\Phi(X_i)\cdot\theta))^{1- Y_i})] \\
+        = \sum_i \mathbb{E}_{\theta \sim \mathcal{N}(\mu, \Sigma)}[Y_i \cdot \log (\sigma(\Phi(X_i)\cdot\theta)) + (1- Y_i) \cdot \log(1-\sigma(\Phi(X_i)\cdot\theta))] \\
+    \end{align}
+    
+    so we need an estimate for
+    \begin{equation}
+        \mathbb{E}_{\theta \sim \mathcal{N}(\mu, \Sigma)}[\log (\sigma(\Phi(X_i)\cdot\theta))]
+        =\int \mathcal{N}(\theta, \mu, \Sigma) \cdot \log (\sigma(\Phi(X_i)\cdot\theta)) d\theta
+    \end{equation}
+
+    where 
+    \begin{equation}
+        \sigma(x) = \frac{1}{1+e^{-x}}
+    \end{equation}
+
+\section{Solution}
+    Log-sigmoid has the form
+    \begin{align}
+        \log(\sigma(x)) 
+        &= \log(\frac{1}{1+e^{-x}})\\
+        &= -\log(1+e^{-x})\\
+    \end{align}
+    thus we want a solution of the form:
+    \begin{equation}
+        \mathbb{E} = -\log(1 + e^{-A(\mu, \Sigma)})
+    \end{equation}
+    with a given $A$
+
+
+    We want the values and the derivatives to match
+
+
+\end{document}
+
