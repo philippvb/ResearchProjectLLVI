@@ -1,7 +1,9 @@
+from abc import abstractmethod
 import os
 from datetime import datetime
 from enum import Enum
 from typing import List
+from numpy import dtype
 
 import torch
 from torch import nn
@@ -17,7 +19,12 @@ class LikApprox(Enum):
     MAXIMUMLIKELIHOOD = "ML"
     MONTECARLO = "MC"
     CLOSEDFORM = "CF"
+
+class PredictApprox(Enum):
+    MAXIMUMLIKELIHOOD = "ML"
+    MONTECARLO = "MC"
     PROBIT = "PR"
+
     
 
 class LLVINetwork(nn.Module):
@@ -67,8 +74,8 @@ class LLVINetwork(nn.Module):
     def load(self, filedir):
         self.load_state_dict(torch.load(filedir + "/model.pt"))
 
-    def update_prior_mu(self, value):
-        self.prior_mu = nn.Parameter(value.detach().clone())
+    # def update_prior_mu(self, value):
+    #     self.prior_mu = nn.Parameter(value.detach().clone())
 
     def clear_nn_optimizers(self):
         [optimizer.zero_grad() for optimizer in self.nn_optimizers]
@@ -82,6 +89,12 @@ class LLVINetwork(nn.Module):
         features = self.feature_extractor(x)
         output = features @ self.sample_ll(samples=samples)
         return output
+
+    def forward_MC2(self, x:torch.Tensor, samples=10):
+        mean, cov = self.forward_multi(x)
+        pred_samples = torch.distributions.MultivariateNormal(mean, cov).sample((samples, ))
+        return pred_samples
+
 
     def forward_ML(self, x: torch.Tensor) -> torch.Tensor:
         """Computes a forward pass with the ML estimate of the Last-Layer weights,
@@ -97,29 +110,54 @@ class LLVINetwork(nn.Module):
         output = features @ self.get_ll_mu()
         return output
 
-    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
-        if self.out_dim > 1:
-            return self.forward_multi(x)
-        else:
-            return self.forward_single(x)
+    @abstractmethod
+    def forward(self, x: torch.Tensor, method: PredictApprox):
+        raise NotImplementedError
 
     def forward_single(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         features = self.feature_extractor(x)
-        pred_cov = features @ self.get_ll_cov() @ torch.transpose(features, 0, 1)
         pred_mean = features @ self.get_ll_mu()
+        pred_cov = features @ self.get_ll_cov() @ torch.transpose(features, 0, 1)
         return pred_mean, pred_cov
 
     def forward_multi(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        n_datapoints = x.shape[0]
         features = self.feature_extractor(x)
         pred_mean = features @ self.get_ll_mu()
-        features_concat = torch.zeros((x.shape[0], self.out_dim, self.feature_dim * self.out_dim))
+        features_concat = torch.zeros((n_datapoints, self.out_dim, self.feature_dim * self.out_dim))
         for i in range(self.out_dim):
             features_concat[:, i, i*self.feature_dim:(i+1) * self.feature_dim] = features
+        ll_cov = self.get_ll_cov()
+        # print(ll_cov)
+        pred_cov = features_concat @ ll_cov @ torch.transpose(features_concat, dim0=1, dim1=-1)
+        wrong = torch.Tensor([torch.equal(pred_cov[i], torch.zeros((2,2))) for i in range(n_datapoints)]).bool()
+        # print(x[wrong])
+        # print(features[wrong])
+        # print(self.feature_extractor(x[wrong]))
+        return pred_mean, pred_cov
 
-        # features_i = [torch.unsqueeze(torch.cat([torch.zeros_like(features)] * i + [features] + [torch.zeros_like(features)] * (self.out_dim - i - 1), dim=-1), dim=0) for i in range(self.out_dim)]
-        # f = features_i[0]
-        # features_concat = torch.cat(features_i)
-        pred_cov = features_concat @ self.get_ll_cov() @ torch.transpose(features_concat, dim0=1, dim1=-1)
+    def forward_log_marginal_likelihood(self, x: torch.Tensor, samples:int) -> tuple[torch.Tensor, torch.Tensor]:
+        n_datapoints = x.shape[0]
+        features = self.feature_extractor(x)
+        pred_mean = features @ self.prior_mu
+        features_concat = torch.zeros((n_datapoints, self.out_dim, self.feature_dim * self.out_dim))
+        for i in range(self.out_dim):
+            features_concat[:, i, i*self.feature_dim:(i+1) * self.feature_dim] = features
+        ll_cov = torch.diag(torch.flatten(torch.exp(self.prior_log_var)))
+        pred_cov = features_concat @ ll_cov @ torch.transpose(features_concat, dim0=1, dim1=-1)
+        pred_samples = torch.cat([(torch.cholesky(pred_cov[i]) @ torch.randn((self.out_dim, samples))).T for i in range(n_datapoints)]).reshape((samples, n_datapoints, self.out_dim))
+        return pred_samples
+
+
+
+    def forward_multi_no_pad(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        raise ValueError("Not implemented yet")
+        features = self.feature_extractor(x)
+        pred_mean = features @ self.get_ll_mu()
+        ll_cov = torch.reshape(self.get_ll_cov(), (self.out_dim, self.out_dim, self.feature_dim, self.feature_dim))
+        pred_cov1 = (features @ ll_cov)#.permute(1, 3, 2, 0)
+        pred_cov = (pred_cov1 @ features.T).permute(3,2,1,0)
+        pred_cov = torch.stack([pred_cov[i,i] for i in range(x.shape[0])], dim=0)
         return pred_mean, pred_cov
 
 
@@ -138,12 +176,13 @@ class LLVINetwork(nn.Module):
 
 
     # training:
+    # this function is stricly for training, not for predicting!!!
     def compute_prediction_loss(self, data: torch.Tensor, target: torch.Tensor, method: LikApprox, **method_kwargs) -> torch.Tensor:
         if method == LikApprox.MAXIMUMLIKELIHOOD:
             prediction = self.forward_ML(data)
             return self.loss_fun(prediction, target, average=False)
         elif method == LikApprox.MONTECARLO:
-            prediction = self.forward_MC(data)
+            prediction = self.forward_MC(data, **method_kwargs)
             return self.loss_fun(prediction, target, average=True)
         else:
             raise ValueError(f"Method {method} not implemented")
@@ -187,6 +226,46 @@ class LLVINetwork(nn.Module):
         hyper_fun = lambda train_loader: self.train_hyper_epoch(train_loader, n_datapoints, method, **method_kwargs) if train_hyper else None
 
         return train_wrapper.wrap_train(epochs, train_loader, train_step_fun, train_hyper_fun = hyper_fun, hyper_update_step=update_freq)
+
+        # train functions
+    def train_ll_only(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
+        # self.model_config.update({"trained model only, epochs": epochs, "train_samples": samples, "train_hyper": train_hyper, "hyper update freq": update_freq})
+        self.train()
+        train_wrapper = Trainwrapper(["prediction_loss", "kl_loss"])
+
+        def train_step_fun(data, target):
+            # clear gradients
+            self.clear_nn_optimizers()
+            # compute loss functions
+            prediction_loss = self.compute_prediction_loss(data, target, method, **method_kwargs)
+            kl_loss = self.tau * self.KL_div() / n_datapoints # rescale kl_loss
+            loss = prediction_loss + kl_loss
+            # backward pass
+            loss.backward()
+            self.weight_distribution.optimizer.step()
+            return [prediction_loss, kl_loss]
+
+        hyper_fun = lambda train_loader: self.train_hyper_epoch(train_loader, n_datapoints, method, **method_kwargs) if train_hyper else None
+
+        return train_wrapper.wrap_train(epochs, train_loader, train_step_fun, train_hyper_fun = hyper_fun, hyper_update_step=update_freq)
+
+    def train_hyper(self, train_loader, epochs:int, samples:int):
+        self.train()
+        train_wrapper = Trainwrapper(["prediction_loss"])
+        print(self.prior_mu, self.prior_log_var)
+
+        def train_step_fun(data, target):
+            # clear gradients
+            self.prior_optimizer.zero_grad()
+            # compute loss functions
+            prediction = self.forward_log_marginal_likelihood(data, samples=samples)
+            prediction_loss = self.loss_fun(prediction, target, average=True)
+            # backward pass
+            prediction_loss.backward()
+            self.prior_optimizer.step()
+            return [prediction_loss]
+        
+        return train_wrapper.wrap_train(epochs, train_loader, train_step_fun)
 
 
     def train_hyper_epoch(self, train_loader:torch.Tensor, n_datapoints:int, method:LikApprox, **method_kwargs) -> None:
