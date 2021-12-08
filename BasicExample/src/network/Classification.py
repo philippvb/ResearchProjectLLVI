@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from src.network import LLVINetwork, LikApprox, PredictApprox
 from src.log_likelihood import LogLikelihood
-from src.log_likelihood.Classification import Categorical, Categorical2Classes
+from src.log_likelihood.Classification import Categorical, Categorical2Classes, CategoricalClosedForm
 from pydantic.dataclasses import dataclass
 from dataclasses import field
 from typing import Any
@@ -17,6 +17,7 @@ class LLVIClassification(LLVINetwork):
         if out_dim == 1:
             loss_fun = Categorical2Classes()
         else:
+            self.loss_fun_closed_form = CategoricalClosedForm()
             loss_fun = Categorical()
         super().__init__(feature_dim, out_dim, feature_extractor, weight_dist, loss_fun, prior_mu=prior_mu, prior_log_var=prior_log_var, tau=tau, lr=lr, optimizer_type=optimizer_type)
 
@@ -48,3 +49,9 @@ class LLVIClassification(LLVINetwork):
         return mean / torch.sqrt(1 + math.pi * cov / 8)
 
 
+    def compute_prediction_loss(self, data: torch.Tensor, target: torch.Tensor, method: LikApprox, **method_kwargs) -> torch.Tensor:
+        if method == LikApprox.CLOSEDFORM:
+            pred_mean, pred_cov = self.forward_multi(data)
+            return self.loss_fun_closed_form(pred_mean, pred_cov, target)
+        else:
+            return super().compute_prediction_loss(data, target, method, **method_kwargs)
