@@ -64,6 +64,7 @@ fig, (ax1, ax2) = plt.subplots(2)
 visualize_predictions(net, ax1, x_train, y_train, x_test, y_test, data_noise=data_noise)
 ax1.set_title("Closed form")
 
+feature_extractor = FC_Net(layers=[1, 200, 100], nll = torch.nn.Tanh(),lr=lr, weight_decay=0.1)
 net = LLVIRegression(100, 1, feature_extractor, dist, prior_log_var=-6,
 tau=0.01, data_log_var=-1,#torch.log(torch.tensor([0.04])),
  lr=lr)
