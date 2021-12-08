@@ -1,3 +1,4 @@
+import math
 import sys
 sys.path.append('/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample')
 
@@ -13,12 +14,15 @@ from matplotlib import pyplot as plt
 import matplotlib
 
 class FC_Net_Laplace(nn.Module):
-    def __init__(self, out_dim):
+    def __init__(self, out_dim, weight_decay):
         super().__init__()
         self.fc1 = nn.Linear(2, 20)
         self.fc2 = nn.Linear(20, 20)
         self.fc3 = nn.Linear(20, out_dim, bias=False)
         self.nll = nn.LeakyReLU() # dont use normal relu here since otherwise some values can be 0 later
+        self.optimizer = torch.optim.Adam(self.parameters(), weight_decay=weight_decay, lr=1e-3)
+        self.weight_decay = weight_decay
+
     def forward(self, x):
         h1 = self.nll(self.fc1(x))
         h2 = self.nll(self.fc2(h1))
@@ -27,6 +31,7 @@ class FC_Net_Laplace(nn.Module):
 
     def delete_last_layer(self):
         self.forward = self.new_forward
+        self.optimizer = torch.optim.Adam(self.parameters(), weight_decay=self.weight_decay, lr=1e-4)
 
     def new_forward(self, x):
         h1 = self.nll(self.fc1(x))
@@ -45,12 +50,12 @@ X_test, X1_test, X2_test = create_test_points(-2, 3, n_test_datapoints)
 
 # init model
 torch.manual_seed(3)
-laplace_model = FC_Net_Laplace(2)
+weight_decay = 5e-4
+laplace_model = FC_Net_Laplace(2, weight_decay=weight_decay)
 criterion = torch.nn.CrossEntropyLoss()
-laplace_model.optimizer = torch.optim.Adam(laplace_model.parameters(), weight_decay=5e-4, lr=1e-3)
 
 # train
-epochs = 100
+epochs = 200
 pbar = tqdm(range(epochs))
 for i in pbar:
     for X_batch, y_batch in laplace_loader:
@@ -87,11 +92,6 @@ dist = FullCovariance(20, 2, lr=1e-4)
 dist.update_cov(la.posterior_covariance)
 dist.update_mean(torch.t(laplace_model.fc3.weight))
 
-# define weight distribution and update values
-# from src.weight_distribution.Diagonal import Diagonal
-# dist = Diagonal(20, 2, lr=1e-4)
-# dist.update_var(torch.reshape(torch.diag(la.posterior_covariance), (20, 2)))
-# dist.update_mean(torch.t(laplace_model.fc3.weight))
 
 # delete last layer
 laplace_model.delete_last_layer()
@@ -100,16 +100,22 @@ laplace_model.delete_last_layer()
 # define VI model
 from src.network.Classification import LLVIClassification
 from src.network import PredictApprox, LikApprox
-net = LLVIClassification(20, 2, laplace_model, dist, prior_log_var=1,
-tau=0.1, lr=1e-3)
+
+prior_log_var = math.log(1/(weight_decay * n_datapoints)) #math.log(1/la.prior_precision.detach().clone().item())
+print("prior log var", prior_log_var)
+net = LLVIClassification(20, 2, laplace_model, dist, prior_log_var=prior_log_var, optimizer_type=torch.optim.Adam,
+tau=0.1, lr=1e-4)
 
 # net.prior_mu = nn.Parameter(torch.t(laplace_model.fc3.weight).detach().clone(), requires_grad=True)
 # net.prior_log_var = nn.Parameter(torch.reshape(torch.log(torch.diag(la.posterior_covariance)), net.prior_mu.shape).detach().clone(), requires_grad=True)
 
-# net.train_without_VI(laplace_loader, epochs=1000)
-# print(torch.eq(la.posterior_covariance, dist.get_cov()))
-# net.train_model(laplace_loader, epochs=1000, n_datapoints=n_datapoints, samples=5000, method=LikApprox.MONTECARLO)#, train_hyper=True, update_freq=5)
-# print(net.feature_extractor.state_dict())
+# test the accuracy
+pred_test = torch.argmax(net(x, method=PredictApprox.MONTECARLO, samples=1000), dim=1)
+print("accuracy", torch.mean((pred_test == y).float()).item())
+
+# net.train_hyper(laplace_loader, epochs=500, samples=1000)
+# net.train_model(laplace_loader, epochs=400, n_datapoints=n_datapoints, samples=10, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
+net.train_ll_only(laplace_loader, epochs=200, n_datapoints=n_datapoints, samples=10, method=LikApprox.MONTECARLO)
 
 # test the accuracy
 pred_test = torch.argmax(net(x, method=PredictApprox.MONTECARLO, samples=1000), dim=1)
@@ -123,5 +129,5 @@ cax2 = ax2.contourf(X1_test, X2_test, map_conf, cmap="binary")
 ax2.set_title("VI after Laplace")
 ax2.scatter(x[:, 0], x[:, 1], c=y, cmap=matplotlib.colors.ListedColormap(["red", "blue"]), s=10)
 
-plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Classification/init_laplace/laplace_as_prior_2")
+# plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Classification/init_laplace/optim_prior_full_train_kl_div_01.jpg")
 plt.show()
