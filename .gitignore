@@ -4,6 +4,9 @@ models
 *.pdf
 test.*
 .vscode
+results
+TyXe
+.DS_store
 
 # Byte-compiled / optimized / DLL files
 __pycache__/
