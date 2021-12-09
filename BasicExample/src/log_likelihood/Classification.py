@@ -1,3 +1,4 @@
+from abc import ABC, abstractmethod
 from src.log_likelihood import LogLikelihoodMonteCarlo, LogLikelihood
 import torch
 import math
@@ -40,8 +41,8 @@ class Categorical2Classes(LogLikelihoodMonteCarlo):
         nll_pyt = self.nll_loss(probs, target)
         return nll_pyt
 
-class CategoricalClosedForm(LogLikelihood):
-    name = "CategoricalClosedForm"
+class CategoricalProbitApprox(LogLikelihood):
+    name = "CategoricalClosedFormSigmoidApproximation"
 
     def __init__(self) -> None:
         super().__init__()
@@ -59,3 +60,50 @@ class CategoricalClosedForm(LogLikelihood):
 
     def cf_log_lik(self, mean, cov):
         return torch.log(self.probit_approx(mean, cov))
+
+class CategoricalClosedFormLSEApproximation(LogLikelihood, ABC):
+    name = "CategoricalClosedFormApproximation"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def __call__(self, pred_mean:torch.Tensor, pred_cov:torch.Tensor, target:torch.Tensor) -> torch.Tensor:
+        left_hand = pred_mean[torch.arange(target.shape[0]), torch.squeeze(target)] # same for all approximations since closed form
+        lse = self._get_lse(pred_mean, pred_cov, target)
+        loss = - torch.mean(left_hand - lse) # take mean over batch and negative for log-lik
+        return loss
+
+    @abstractmethod
+    def _get_lse(self, pred_mean:torch.Tensor, pred_cov:torch.Tensor, target:torch.Tensor) -> torch.Tensor:
+        """Returns the mean of the log-sum-exponential(lse) under a Gaussian distribution
+
+        Args:
+            pred_mean (torch.Tensor): The mean of the prediction, size batch x n_classes
+            pred_cov (torch.Tensor): The covariance of the prediction, size batch x n_classes x n_classes
+            target (torch.Tensor): The true class one-hot encoded, size batch x 1
+
+        Returns:
+            torch.Tensor: lse, size batch x 1
+        """
+        raise NotImplementedError
+
+class CategoricalJennsenApprox(CategoricalClosedFormLSEApproximation):
+    """Lower bound on the categorical log-likelihood based on the Jennsen
+    inequality taken from:
+    http://noiselab.ucsd.edu/ECE228/Murphy_Machine_Learning.pdf, section 21.8.4.2
+    """
+    name = "CategoricalClosedFormJennsenApproximation"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def _get_lse(self, pred_mean: torch.Tensor, pred_cov: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        inner = torch.exp(pred_mean + torch.diagonal(pred_cov, dim1=1, dim2=2) / 2)
+        sum = torch.sum(inner, dim=1)
+        return torch.log(sum)
+
+
+
+# pred_mean = torch.tensor BxC
+# pred cov = tensor BxCxC
+    
