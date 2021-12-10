@@ -40,8 +40,8 @@ net.train_without_VI(train_loader, epochs=10)
 # test the accuracy
 pred_test = torch.argmax(net(x, method=PredictApprox.MONTECARLO, samples=1000), dim=1)
 print("accuracy", torch.mean((pred_test == y).float()).item())
-# net.train_model(train_loader, epochs=200, n_datapoints=n_datapoints, samples=5, method=LikApprox.MONTECARLO)
-net.train_ll_only(train_loader, epochs=200, n_datapoints=n_datapoints, samples=5, method=LikApprox.MONTECARLO)
+net.train_model(train_loader, epochs=500, n_datapoints=n_datapoints, samples=5, method=LikApprox.CLOSEDFORM, approx_name="multidelta")
+# net.train_ll_only(train_loader, epochs=200, n_datapoints=n_datapoints, samples=5, method=LikApprox.MONTECARLO)
 # test the accuracy
 pred_test = torch.argmax(net(x, method=PredictApprox.MONTECARLO, samples=1000), dim=1)
 print("accuracy", torch.mean((pred_test == y).float()).item())

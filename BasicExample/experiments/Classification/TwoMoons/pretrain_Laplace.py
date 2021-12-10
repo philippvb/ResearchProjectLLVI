@@ -103,6 +103,7 @@ from src.network import PredictApprox, LikApprox
 
 prior_log_var = math.log(1/(weight_decay * n_datapoints)) #math.log(1/la.prior_precision.detach().clone().item())
 print("prior log var", prior_log_var)
+prior_log_var=0
 net = LLVIClassification(20, 2, laplace_model, dist, prior_log_var=prior_log_var, optimizer_type=torch.optim.Adam,
 tau=0.1, lr=1e-4)
 
@@ -114,8 +115,9 @@ pred_test = torch.argmax(net(x, method=PredictApprox.MONTECARLO, samples=1000), 
 print("accuracy", torch.mean((pred_test == y).float()).item())
 
 # net.train_hyper(laplace_loader, epochs=500, samples=1000)
-# net.train_model(laplace_loader, epochs=400, n_datapoints=n_datapoints, samples=10, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
-net.train_ll_only(laplace_loader, epochs=200, n_datapoints=n_datapoints, samples=10, method=LikApprox.MONTECARLO)
+# net.train_model(laplace_loader, epochs=100, n_datapoints=n_datapoints, method=LikApprox.CLOSEDFORM, approx_name="jennsen")
+net.train_em_style(laplace_loader, n_datapoints, total_epochs=100, inner_epochs_fe=1, inner_epochs_vi=5, method=LikApprox.MONTECARLO, samples=10)
+# net.train_ll_only(laplace_loader, epochs=200, n_datapoints=n_datapoints, samples=10, method=LikApprox.CLOSEDFORM, approx_name="jennsen")
 
 # test the accuracy
 pred_test = torch.argmax(net(x, method=PredictApprox.MONTECARLO, samples=1000), dim=1)
