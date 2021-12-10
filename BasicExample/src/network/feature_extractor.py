@@ -10,7 +10,7 @@ class FC_Net(nn.Sequential):
             layers_container.append(nll)
 
         super().__init__(*layers_container)
-        self.optimizer = optimizer(self.parameters(), **optim_kwargs)
+        self.optimizer: optim = optimizer(self.parameters(), **optim_kwargs)
         self.optim_args = optim_kwargs
 
     def delete_last_layer(self):

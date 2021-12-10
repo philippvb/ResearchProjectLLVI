@@ -11,7 +11,8 @@ from src.log_likelihood import LogLikelihood
 from src.network.feature_extractor import FC_Net
 from src.utils.TrainWrapper import Trainwrapper
 from src.weight_distribution import WeightDistribution
-
+import pandas as pd
+from tqdm import tqdm
 
 class LikApprox(Enum):
     """Available Likelihood approximations
@@ -248,6 +249,75 @@ class LLVINetwork(nn.Module):
         hyper_fun = lambda train_loader: self.train_hyper_epoch(train_loader, n_datapoints, method, **method_kwargs) if train_hyper else None
 
         return train_wrapper.wrap_train(epochs, train_loader, train_step_fun, train_hyper_fun = hyper_fun, hyper_update_step=update_freq)
+
+    def train_feature_extractor_only(self, train_loader, epochs=1):
+        self.train()
+        train_wrapper = Trainwrapper(["prediction_loss"])
+
+        def train_step_fun(data, target):
+            # clear gradients
+            self.feature_extractor.optimizer.zero_grad()
+            # compute loss functions
+            loss = self.compute_prediction_loss(data, target, method=LikApprox.MAXIMUMLIKELIHOOD)
+            # backward pass
+            loss.backward()
+            self.feature_extractor.optimizer.step()
+            return [loss]
+
+        return train_wrapper.wrap_train(epochs, train_loader, train_step_fun)
+
+
+    def train_em_style(self, train_loader, n_datapoints, total_epochs=10, inner_epochs_fe=10, inner_epochs_vi=10, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
+        self.train()
+
+        loss_tracker = pd.DataFrame(columns={"Feature extractor loss", "Log_Lik", "KL_loss"})
+        pbar = tqdm(range(total_epochs))
+        for epoch in pbar:
+            # E step: do the feature extractor
+            for i in range(inner_epochs_fe):
+                batch_loss = torch.zeros(inner_epochs_fe)
+                for batch_id, (data, target) in enumerate(train_loader):
+                    # clear gradients
+                    self.feature_extractor.optimizer.zero_grad()
+                    # compute loss functions
+                    loss = self.compute_prediction_loss(data, target, method=LikApprox.MAXIMUMLIKELIHOOD)
+                    # backward pass
+                    loss.backward()
+                    self.feature_extractor.optimizer.step()
+                    batch_loss[i] = loss
+
+            # M step: do the last layer
+            for i in range(inner_epochs_vi):
+                batch_log_lik = torch.zeros(inner_epochs_vi)
+                batch_kl_loss = torch.zeros(inner_epochs_vi)
+                for batch_id, (data, target) in enumerate(train_loader):
+                    # clear gradients
+                    self.weight_distribution.optimizer.zero_grad()
+                    # compute loss functions
+                    prediction_loss = self.compute_prediction_loss(data, target, method, **method_kwargs)
+                    kl_loss = self.tau * self.KL_div() / n_datapoints # rescale kl_loss
+                    loss = prediction_loss + kl_loss
+                    # backward pass
+                    loss.backward()
+                    self.weight_distribution.optimizer.step()
+                    batch_log_lik[i] = prediction_loss
+                    batch_kl_loss[i] = kl_loss
+
+
+            batch_loss = batch_loss.detach().clone()
+            batch_kl_loss = batch_kl_loss.detach().clone()
+            batch_log_lik = batch_log_lik.detach().clone()
+            description = f"FE:{round(batch_loss.mean().item(), 2)}, LogLik{round(batch_log_lik.mean().item(), 2)}, KL_div:{round(batch_kl_loss.mean().item(), 2)}"
+            pbar.set_description(description)
+            loss_tracker = loss_tracker.append(pd.DataFrame.from_dict({"Feature extractor loss": [batch_loss.mean()], "Log_Lik": [batch_log_lik.mean()], "KL_loss": [batch_kl_loss.mean()]})) 
+
+        return loss_tracker
+
+        
+
+
+
+
 
     def train_hyper(self, train_loader, epochs:int, samples:int):
         self.train()
