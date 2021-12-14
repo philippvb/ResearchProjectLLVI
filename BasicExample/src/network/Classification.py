@@ -2,7 +2,7 @@ import torch
 from torch import nn
 from src.network import LLVINetwork, LikApprox, PredictApprox
 from src.log_likelihood import LogLikelihood
-from src.log_likelihood.Classification import Categorical, Categorical2Classes, CategoricalProbitApprox, CategoricalJennsenApprox
+from src.log_likelihood.Classification import Categorical, Categorical2Classes, CategoricalProbitApprox, CategoricalJennsenApprox, CategoricalMultiDeltaApprox, CategoricalBohningApprox
 from pydantic.dataclasses import dataclass
 from dataclasses import field
 from typing import Any
@@ -19,6 +19,8 @@ class LLVIClassification(LLVINetwork):
         else:
             self.loss_fun_cf_probit = CategoricalProbitApprox()
             self.loss_fun_cf_jennsen = CategoricalJennsenApprox()
+            self.loss_fun_cf_multidelta = CategoricalMultiDeltaApprox()
+            self.loss_fun_cf_bohning = CategoricalBohningApprox()
             loss_fun = Categorical()
         super().__init__(feature_dim, out_dim, feature_extractor, weight_dist, loss_fun, prior_mu=prior_mu, prior_log_var=prior_log_var, tau=tau, lr=lr, optimizer_type=optimizer_type)
 
@@ -56,8 +58,12 @@ class LLVIClassification(LLVINetwork):
             approx_name = approx_name.upper()
             if approx_name == "JENNSEN":
                 return self.loss_fun_cf_jennsen(pred_mean, pred_cov, target)
+            elif approx_name == "BOHNING":
+                return self.loss_fun_cf_bohning(pred_mean, pred_cov, target)
             elif approx_name == "PROBIT":
                 return self.loss_fun_cf_probit(pred_mean, pred_cov, target)
+            elif approx_name == "MULTIDELTA":
+                return self.loss_fun_cf_multidelta(pred_mean, pred_cov, target)
             else:
                 raise ValueError(f"Closed form approximation {approx_name} not implemented.")
         else:

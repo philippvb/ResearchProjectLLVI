@@ -112,7 +112,7 @@ class CategoricalJennsenApprox(CategoricalClosedFormLSEApproximation):
 
 class CategoricalBohningApprox(CategoricalClosedFormLSEApproximation):
     """Lower bound on the categorical log-likelihood based on the Bohning
-    approximation taken from:
+    bound taken from:
     http://noiselab.ucsd.edu/ECE228/Murphy_Machine_Learning.pdf, section 21.8.2
     """
     name = "CategoricalClosedFormBohningApproximation"
@@ -133,7 +133,7 @@ class CategoricalBohningApprox(CategoricalClosedFormLSEApproximation):
         # a_mean_scalar_prod = torch.einsum("ab, bc, cd -> ad", pred_mean, a, pred_mean.T)
         c = a_mean_scalar_prod/2 - torch.einsum("bc,bc -> b", g, pred_mean) + self.lse(pred_mean)
         trace = torch.sum(torch.diagonal(torch.einsum("ac,bcd->bad", a, pred_cov), dim1=1, dim2=2), dim=-1) # trace of A @ pred_cov
-        # final from
+        # final form
         lse =  trace/2 + a_mean_scalar_prod /2 - torch.einsum("bc, bc -> b", b, pred_mean) + c
         return lse
 
