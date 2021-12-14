@@ -49,5 +49,4 @@ map_conf = predictions.max(1).values.reshape(n_test_datapoints, n_test_datapoint
 cax1 = ax.contourf(X1_test, X2_test, map_conf, cmap="binary")
 cbar = fig.colorbar(cax1, ticks=[0.5, 0.6, 0.7, 0.8, 0.9, 1])
 ax.scatter(x[:, 0], x[:, 1], c=y, cmap=matplotlib.colors.ListedColormap(["red", "blue"]), s=10)
-# plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Classification/init_laplace/ll_train_only.jpg")
-plt.show()
+
