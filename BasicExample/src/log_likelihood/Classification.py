@@ -1,4 +1,5 @@
 from abc import ABC, abstractmethod
+from turtle import pen
 from src.log_likelihood import LogLikelihoodMonteCarlo, LogLikelihood
 import torch
 import math
@@ -12,19 +13,23 @@ class Categorical(LogLikelihoodMonteCarlo):
         self.nll_loss = torch.nn.NLLLoss()
 
     def __call__(self, pred:torch.Tensor, target:torch.Tensor, average=True):
-        pred = torch.softmax(pred, dim=-1) # convert to probs
+        # pred = torch.log_softmax(pred, dim=-1) # convert to probs
         if average:
+            pred = torch.softmax(pred, dim=-1)
+            # target = torch.squeeze(target)
+            # row_index = torch.arange(0, target.shape[0])
+            # target_full_tensor = torch.full_like(pred, 0)
+            # target_full_tensor[:,row_index, target] = 1
+            # loss = - torch.mean(pred * target_full_tensor)
+            # return loss
+
             pred = self.average_prediction(pred)
-        pred = torch.log(pred)
-        torch_loss = self.nll_loss(pred, target)
-        return torch_loss
-        target = torch.squeeze(target)
-        row_index = torch.arange(0, target.shape[0])
-        smoothing = 0
-        smooth_target = torch.full_like(pred, smoothing)
-        smooth_target[row_index, target] = 1 - smoothing * (pred.shape[1])
-        loss = - torch.mean(pred * smooth_target)
-        # return loss
+            pred = torch.log(pred)
+            torch_loss = self.nll_loss(pred, target)
+            return torch_loss
+        else:
+            pred = torch.log_softmax(pred, dim=-1)
+            return self.nll_loss(pred, target)
 
 class Categorical2Classes(LogLikelihoodMonteCarlo):
     name = "Categorical2Classes"
@@ -61,6 +66,7 @@ class CategoricalProbitApprox(LogLikelihood):
     def cf_log_lik(self, mean, cov):
         return torch.log(self.probit_approx(mean, cov))
 
+
 class CategoricalClosedFormLSEApproximation(LogLikelihood, ABC):
     name = "CategoricalClosedFormApproximation"
 
@@ -69,12 +75,12 @@ class CategoricalClosedFormLSEApproximation(LogLikelihood, ABC):
 
     def __call__(self, pred_mean:torch.Tensor, pred_cov:torch.Tensor, target:torch.Tensor) -> torch.Tensor:
         left_hand = pred_mean[torch.arange(target.shape[0]), torch.squeeze(target)] # same for all approximations since closed form
-        lse = self._get_lse(pred_mean, pred_cov, target)
+        lse = self._get_lse_expectation(pred_mean, pred_cov, target)
         loss = - torch.mean(left_hand - lse) # take mean over batch and negative for log-lik
         return loss
 
     @abstractmethod
-    def _get_lse(self, pred_mean:torch.Tensor, pred_cov:torch.Tensor, target:torch.Tensor) -> torch.Tensor:
+    def _get_lse_expectation(self, pred_mean:torch.Tensor, pred_cov:torch.Tensor, target:torch.Tensor) -> torch.Tensor:
         """Returns the mean of the log-sum-exponential(lse) under a Gaussian distribution
 
         Args:
@@ -97,13 +103,69 @@ class CategoricalJennsenApprox(CategoricalClosedFormLSEApproximation):
     def __init__(self) -> None:
         super().__init__()
 
-    def _get_lse(self, pred_mean: torch.Tensor, pred_cov: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+    def _get_lse_expectation(self, pred_mean: torch.Tensor, pred_cov: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
         inner = torch.exp(pred_mean + torch.diagonal(pred_cov, dim1=1, dim2=2) / 2)
         sum = torch.sum(inner, dim=1)
         return torch.log(sum)
 
 
 
-# pred_mean = torch.tensor BxC
-# pred cov = tensor BxCxC
-    
+class CategoricalBohningApprox(CategoricalClosedFormLSEApproximation):
+    """Lower bound on the categorical log-likelihood based on the Bohning
+    approximation taken from:
+    http://noiselab.ucsd.edu/ECE228/Murphy_Machine_Learning.pdf, section 21.8.2
+    """
+    name = "CategoricalClosedFormBohningApproximation"
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def lse(self, x):
+        return torch.log(torch.sum(torch.exp(x),dim=-1))
+
+    def _get_lse_expectation(self, pred_mean: torch.Tensor, pred_cov: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        n_classes = pred_mean.shape[-1]
+        # required precomputations
+        a = (torch.eye(n_classes) - torch.full((n_classes, n_classes), 1)/n_classes)/2
+        g = torch.softmax(pred_mean, dim=-1)
+        b = torch.einsum("ac,bc -> ba", a, pred_mean) - g
+        a_mean_scalar_prod = torch.diagonal(pred_mean @ a @ pred_mean.T) # batch product of pred_mean @ A  @ pred_mean.T
+        # a_mean_scalar_prod = torch.einsum("ab, bc, cd -> ad", pred_mean, a, pred_mean.T)
+        c = a_mean_scalar_prod/2 - torch.einsum("bc,bc -> b", g, pred_mean) + self.lse(pred_mean)
+        trace = torch.sum(torch.diagonal(torch.einsum("ac,bcd->bad", a, pred_cov), dim1=1, dim2=2), dim=-1) # trace of A @ pred_cov
+        # final from
+        lse =  trace/2 + a_mean_scalar_prod /2 - torch.einsum("bc, bc -> b", b, pred_mean) + c
+        return lse
+
+
+
+class CategoricalMultiDeltaApprox(CategoricalClosedFormLSEApproximation):
+    """Lower bound on the categorical log-likelihood based on the Multivariate Delta Method taken from:
+    http://noiselab.ucsd.edu/ECE228/Murphy_Machine_Learning.pdf, section 21.8.4.3
+    """
+    name = "CategoricalClosedFormMultivariateDeltaApproximation" 
+
+    def __init__(self) -> None:
+        super().__init__()
+
+    def batch_outer(self, x):
+        return torch.einsum('bp, br->bpr', x,x)
+
+    def _get_lse_expectation(self, pred_mean: torch.Tensor, pred_cov: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
+        # pred_mean = features @ weight_mean # size batch x classes
+        # pred_cov = torch.ones_like(pred_mean) # size batch x classes x classes
+        lse_mean = torch.log(torch.sum(torch.exp(pred_mean), dim=-1)) # size batch
+
+        # lse_weight_mean = torch.log(torch.sum(torch.exp(weight_mean), dim=-1)) # size features
+        # g = torch.exp(weight_mean - lse_weight_mean) # size features x classes
+        # h = torch.diag(g) - torch.transpose(g) @ g # diag: size features x classes x classes
+        # return lse_mean + torch.trace(features @ h @ torch.transpose(features) @ weight_cov)/2
+
+        g = torch.exp(pred_mean - torch.unsqueeze(lse_mean, dim=1)) # size batch x classes
+        h = torch.diag(g) - self.batch_outer(g)# size batch x classes x classes
+        left = torch.einsum('bp, bpq->bq', pred_mean, h)
+        right = torch.einsum('bp, bpq->bq', pred_mean, pred_cov)
+        trace_value = torch.einsum('bp, br->bpr', left, right)
+        return lse_mean + torch.sum(torch.diagonal(trace_value, dim1=1, dim2=2), dim=-1)/2
+
+
