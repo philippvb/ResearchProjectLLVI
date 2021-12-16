@@ -7,7 +7,7 @@ class Trainwrapper:
         self.log_values = log_values
         
 
-    def wrap_train(self, epochs, train_loader, train_step_fun, train_hyper_fun = None, hyper_update_step=2):
+    def wrap_train(self, epochs, train_loader, train_step_fun, train_hyper_fun = None, hyper_update_step=2, callback=None):
         epoch_losses = []
         pbar = tqdm(range(epochs))
         epoch_losses = pd.DataFrame(columns=["epoch"] + self.log_values)
@@ -27,5 +27,8 @@ class Trainwrapper:
             # train hyperparameters
             if train_hyper_fun and (epoch % hyper_update_step == 0):
                 train_hyper_fun(train_loader)
+
+            if callback:
+                callback(current_epoch_loss)
 
         return epoch_losses

@@ -207,7 +207,7 @@ class LLVINetwork(nn.Module):
         return train_wrapper.wrap_train(epochs=epochs, train_loader=train_loader, train_step_fun=train_step_fun)
 
     # train functions
-    def train_model(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
+    def train_model(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, callback=None, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
         # self.model_config.update({"trained model only, epochs": epochs, "train_samples": samples, "train_hyper": train_hyper, "hyper update freq": update_freq})
         self.train()
         train_wrapper = Trainwrapper(["prediction_loss", "kl_loss"])
@@ -226,7 +226,7 @@ class LLVINetwork(nn.Module):
 
         hyper_fun = lambda train_loader: self.train_hyper_epoch(train_loader, n_datapoints, method, **method_kwargs) if train_hyper else None
 
-        return train_wrapper.wrap_train(epochs, train_loader, train_step_fun, train_hyper_fun = hyper_fun, hyper_update_step=update_freq)
+        return train_wrapper.wrap_train(epochs, train_loader, train_step_fun, train_hyper_fun = hyper_fun, hyper_update_step=update_freq, callback=callback)
 
         # train functions
     def train_ll_only(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
@@ -307,9 +307,9 @@ class LLVINetwork(nn.Module):
             batch_loss = batch_loss.detach().clone()
             batch_kl_loss = batch_kl_loss.detach().clone()
             batch_log_lik = batch_log_lik.detach().clone()
-            description = f"FE:{round(batch_loss.mean().item(), 2)}, LogLik{round(batch_log_lik.mean().item(), 2)}, KL_div:{round(batch_kl_loss.mean().item(), 2)}"
+            description = f"FE:{round(batch_loss.mean().item(), 2)}, LogLik:{round(batch_log_lik.mean().item(), 2)}, KL_div:{round(batch_kl_loss.mean().item(), 2)}"
             pbar.set_description(description)
-            loss_tracker = loss_tracker.append(pd.DataFrame.from_dict({"Feature extractor loss": [batch_loss.mean()], "Log_Lik": [batch_log_lik.mean()], "KL_loss": [batch_kl_loss.mean()]})) 
+            loss_tracker = loss_tracker.append(pd.DataFrame.from_dict({"Feature extractor loss": [batch_loss.mean().item()], "Log_Lik": [batch_log_lik.mean().item()], "KL_loss": [batch_kl_loss.mean().item()]})) 
 
         return loss_tracker
 
