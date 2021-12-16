@@ -151,21 +151,24 @@ class CategoricalMultiDeltaApprox(CategoricalClosedFormLSEApproximation):
     def batch_outer(self, x):
         return torch.einsum('bp, br->bpr', x,x)
 
+    def lse(self, x):
+        return torch.log(torch.sum(torch.exp(x),dim=-1))
+
+    def batch_diagonal(self, x):
+        id_tensor = torch.eye(x.shape[1])
+        return torch.einsum("ab, bc -> abc", x, id_tensor)
+
     def _get_lse_expectation(self, pred_mean: torch.Tensor, pred_cov: torch.Tensor, target: torch.Tensor) -> torch.Tensor:
-        # pred_mean = features @ weight_mean # size batch x classes
-        # pred_cov = torch.ones_like(pred_mean) # size batch x classes x classes
-        lse_mean = torch.log(torch.sum(torch.exp(pred_mean), dim=-1)) # size batch
+        lse = self.lse(pred_mean)
+        g = torch.softmax(pred_mean, dim=-1)
+        h = self.batch_diagonal(g) + self.batch_outer(g)
+        trace_scalar = torch.einsum("ab, abc, ca -> a", pred_mean, h, pred_mean.T)
+        trace = torch.sum(torch.diagonal(pred_cov, dim1=1, dim2=2), dim=-1)
+        return lse + trace_scalar * trace / 2
 
-        # lse_weight_mean = torch.log(torch.sum(torch.exp(weight_mean), dim=-1)) # size features
-        # g = torch.exp(weight_mean - lse_weight_mean) # size features x classes
-        # h = torch.diag(g) - torch.transpose(g) @ g # diag: size features x classes x classes
-        # return lse_mean + torch.trace(features @ h @ torch.transpose(features) @ weight_cov)/2
 
-        g = torch.exp(pred_mean - torch.unsqueeze(lse_mean, dim=1)) # size batch x classes
-        h = torch.diag(g) - self.batch_outer(g)# size batch x classes x classes
-        left = torch.einsum('bp, bpq->bq', pred_mean, h)
-        right = torch.einsum('bp, bpq->bq', pred_mean, pred_cov)
-        trace_value = torch.einsum('bp, br->bpr', left, right)
-        return lse_mean + torch.sum(torch.diagonal(trace_value, dim1=1, dim2=2), dim=-1)/2
+        
+
+
 
 
