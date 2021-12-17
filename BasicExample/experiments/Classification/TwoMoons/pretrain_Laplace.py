@@ -2,7 +2,7 @@ import math
 import sys
 sys.path.append('/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample')
 
-from two_moons_dataset import create_test_points, create_train_set
+from datasets.Classification.TwoMoons import create_test_points, create_train_set
 from src.network.feature_extractor import FC_Net
 from torch import nn
 import torch

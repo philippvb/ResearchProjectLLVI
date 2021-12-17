@@ -18,9 +18,9 @@ import matplotlib
 from src.network.feature_extractor import FC_Net
 from src.network.Classification import LLVIClassification
 from src.network import LikApprox, PredictApprox
-from experiments.TwoMoons.two_moons_dataset import create_test_points, create_train_set
+from datasets.Classification.TwoMoons import create_test_points, create_train_set
 
-n_datapoints=1024
+n_datapoints=256
 batch_size = 32
 x, y = create_train_set(n_datapoints=n_datapoints, noise=0.2)
 train_loader = DataLoader(TensorDataset(x, y), batch_size=batch_size)
@@ -32,11 +32,11 @@ from src.weight_distribution.Full import FullCovariance
 dist = FullCovariance(20, 2, lr=lr)
 
 net = LLVIClassification(20, 2, feature_extractor, dist,
-prior_log_var=-7, optimizer_type=torch.optim.Adam,
+prior_log_var=-2, optimizer_type=torch.optim.Adam,
 tau=1, lr=lr)
 
 
-net.train_em_style(train_loader, n_datapoints, total_epochs=100, inner_epochs_fe=1, inner_epochs_vi=3, method=LikApprox.MONTECARLO, samples=10)
+train_loss = net.train_em_style(train_loader, n_datapoints, total_epochs=100, inner_epochs_fe=1, inner_epochs_vi=3, method=LikApprox.MONTECARLO, samples=10)
 
 
 
@@ -55,5 +55,5 @@ map_conf = lik.max(1).values.reshape(n_test_datapoints, n_test_datapoints)
 cax1 = ax.contourf(X1_test, X2_test, map_conf, cmap="binary")
 cbar = fig.colorbar(cax1, ticks=[0.5, 0.6, 0.7, 0.8, 0.9, 1])
 ax.scatter(x[:, 0], x[:, 1], c=y, cmap=matplotlib.colors.ListedColormap(["red", "blue"]), s=10)
-# plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Classification/init_laplace/ll_train_only.jpg")
+# plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Classification/em_style/two_moons_results.jpg")
 plt.show()

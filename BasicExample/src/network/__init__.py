@@ -129,12 +129,7 @@ class LLVINetwork(nn.Module):
         for i in range(self.out_dim):
             features_concat[:, i, i*self.feature_dim:(i+1) * self.feature_dim] = features
         ll_cov = self.get_ll_cov()
-        # print(ll_cov)
         pred_cov = features_concat @ ll_cov @ torch.transpose(features_concat, dim0=1, dim1=-1)
-        wrong = torch.Tensor([torch.equal(pred_cov[i], torch.zeros((2,2))) for i in range(n_datapoints)]).bool()
-        # print(x[wrong])
-        # print(features[wrong])
-        # print(self.feature_extractor(x[wrong]))
         return pred_mean, pred_cov
 
     def forward_log_marginal_likelihood(self, x: torch.Tensor, samples:int) -> tuple[torch.Tensor, torch.Tensor]:

@@ -18,7 +18,7 @@ import matplotlib
 from src.network.feature_extractor import FC_Net
 from src.network.Classification import LLVIClassification
 from src.network import LikApprox, PredictApprox
-from experiments.TwoMoons.two_moons_dataset import create_test_points, create_train_set
+from datasets.Classification.TwoMoons import create_test_points, create_train_set
 
 n_datapoints=1024
 batch_size = 32

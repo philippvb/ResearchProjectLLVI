@@ -16,11 +16,14 @@ def dataset_to_loader(x_train, y_train, x_test, y_test, batch_size):
     test_set = DataLoader(TensorDataset(torch.unsqueeze(x_test, dim=-1), torch.unsqueeze(y_test, dim=-1)), batch_size=batch_size)
     return train_set, test_set
 
+def to_loader(x,y,batch_size):
+    return DataLoader(TensorDataset(torch.unsqueeze(x, dim=-1), torch.unsqueeze(y, dim=-1)), batch_size=batch_size)
+
 
 
 def create_dataset_loader(lower:float, upper:float, mapping, cluster_pos:List[float], data_noise:float, n_datapoints:int, batch_size:int):
     x_train, y_train, x_test, y_test = create_dataset(lower, upper, mapping, cluster_pos, data_noise, n_datapoints)
-    return dataset_to_loader(x_train, y_train, x_test, y_test )
+    return dataset_to_loader(x_train, y_train, x_test, y_test, batch_size)
 
 
 def sinus_mapping(x, noise):
