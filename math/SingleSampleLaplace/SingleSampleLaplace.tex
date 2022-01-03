@@ -1,0 +1,121 @@
+\documentclass[a4paper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{pgfplots}
+\usepackage{amsmath, enumerate, amssymb, multirow, fancyhdr, color, graphicx, lastpage, listings, tikz, pdflscape, subfigure, float, polynom, hyperref, tabularx, forloop, geometry, listings, fancybox, tikz, forest, tabstackengine, cancel}
+\input kvmacros
+\geometry{a4paper,left=3cm, right=3cm, top=3cm, bottom=3cm}
+\pagestyle {fancy}
+
+
+\begin{document}
+
+
+
+\section{Single Sample ELBO vs Laplace}
+We want to show that the parameters of the gaussian of the weight distribution
+when optimizing the ELBO is the same as standard optimization with a following
+laplace approximation. 
+
+\section{General Objective function}
+  The general form of the ELBO is:
+  \begin{align*}
+      \mathbb{E}_{q(\theta)}[\sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))}] - D_{KL}(q(\theta) \Vert p(\theta))\\
+  \end{align*}
+  if we have just one sample the expected log likelihood collapses to a standard likelihood
+  \begin{align*}
+    \sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))} - D_{KL}(q(\theta) \Vert p(\theta))\\
+  \end{align*}
+  where $\theta \sim q(\theta)$.\\
+  If we redefine this loss as a probability distribution, more specific a Gibbs distribution, we have:
+  \begin{align*}
+    \prod_{i=1}^n p(y_i \vert f_{\theta}(x_i)) \cdot \exp(- D_{KL}(q(\theta) \Vert p(\theta)))\\
+  \end{align*}
+  so if we redefine the KL div as a prior over the weights, we have:
+  \begin{align*}
+    p(\theta \vert X,y) \propto \prod_{i=1}^n p(y_i \vert f_{\theta}(x_i)) \cdot p(\theta)\\
+  \end{align*}
+  This posterior is used for the Laplace approximation.
+
+\section{Regression}
+
+    
+  \subsection{Closed form}
+    In the case of Regression, we have the closed form likelihood:
+          \begin{align*}
+            \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+            &= -\frac{k}{2}\log{2\pi} - \frac{1}{2} \log(\vert A^{-1} \vert) + \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [(\phi_{X}\theta - y)^T A^{-1} (\phi_{X}\theta - y)]\\
+            &= -\frac{k}{2}\log{2\pi} - \frac{1}{2} \log(\vert A^{-1} \vert) + Tr(A^{-1} \phi_X^T \Sigma \phi_X) + (\phi_X \mu - y)^T A^{-1} (\phi_X \mu -y)
+          \end{align*}
+  
+    \subsubsection{Mean}
+      If we take the derivative wrt $\mu$
+
+      \begin{align}
+        \nabla_{\mu} \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+        &=\nabla_{\mu} \langle \phi_{X} \mu - y, A^{-1} (\phi_{X} \mu -y) \rangle \label{eq: RegressionLoss}\\ 
+        &= 2 \phi_X^T A (\phi_{X} \mu - y) \label{eq:ClosedForm_Mean}
+      \end{align}
+
+      If we take the standard MSE loss for Regression, we get the same derivative
+      as in \ref{eq: RegressionLoss}, thus we get the same optimization result. To
+      get to MAP estimation, we just impose the KL divergence as a prior over the
+      weigths.
+    
+    \subsubsection{Variance}
+
+      \begin{align}
+        \nabla_\Sigma \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+        &= \nabla_\Sigma Tr(A^{-1} \phi_X^T \Sigma \phi_X)\\
+        &= \phi_X^T \phi_X A^{-1^T}
+      \end{align}
+
+      For the laplace approximation, we need to compute:
+      \begin{align}
+        \nabla^2_{\mu} \log p(\theta \vert D)
+        &\propto \nabla^2_{\mu} \langle \phi_X \mu - y, A^{-1} (\phi_X \mu -y) \rangle \\
+        &= \nabla_{\mu} 2 \phi_X^T A^{-1} (\phi_X\mu - y)\\
+        &= 2 \phi_X^T A^{-1} \phi_X \label{eq:Laplace_Covariance}
+      \end{align}
+      and then take the negative inverse, so we end up with:
+      $\Sigma = (- 2 \phi_X^T A^{-1} \phi_X )^{-1}$
+
+      The problem is now, that while the terms are the same (up to scaling), for the
+      ELBO this is the derivative whereas for Laplace this is the approximation.
+      possible further steps:
+      \begin{itemize}
+        \item extract term from KL-divergence so that we end up with with \ref{eq:Laplace_Covariance}, however then not consistent anymore with mean derivation.
+      \end{itemize}
+
+      \subsection{Single Sample}
+        The likelihood for MC sampling with a single sample becomes:
+        \begin{align*}
+          \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+          &\approx -\frac{k}{2}\log{2\pi} - \frac{1}{2} \log(\vert A^{-1} \vert) + (\phi_{X} (\mu + L \epsilon) - y)^T A^{-1} (\phi_{X}(\mu + L \epsilon) - y)
+        \end{align*}
+        where $\epsilon \sim \mathcal{N}(0,1)$ and $L$ is the cholesky decomposition $L L^T = \Sigma$.
+
+    \subsubsection{Mean}
+      \begin{align}
+        \nabla_{\mu} \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+        &\approx \nabla_{\mu} \langle \phi_{X} (\mu + L \epsilon) - y, A^{-1} (\phi_{X}(\mu + L \epsilon) - y) \rangle\\
+        &= 2\phi_X^T A^{-1} (\phi_X \mu  - y) + 2 \phi_X^T A^{-1} \phi_X L \epsilon
+      \end{align}
+
+      Here the first term corresponds to the solution from
+      \ref{eq:ClosedForm_Mean}, however we get an additional term. We could
+      interpret this as performing noisy gradient descent since in expectation
+      the noise will be 0. Then we also arrive at the same result as for the
+      Laplace approximation.
+
+    \subsubsection{Variance}
+      \begin{align}
+        \nabla_{\Sigma} \mathbb{E}_{\theta \sim N(\mu, \Sigma)} [\log{\mathcal{N}(y, \phi_{X}\theta, A^{-1})}]
+        &\approx \nabla_{\Sigma} \langle \phi_{X} (\mu + L \epsilon) - y, A^{-1} (\phi_{X}(\mu + L \epsilon) - y) \rangle\\
+      \end{align}
+
+      % Here we would need to take the derivative wrt a cholesky, complicated but doable for example https://mathoverflow.net/questions/150427/the-derivative-of-the-cholesky-factor
+
+
+\end{document}
+
