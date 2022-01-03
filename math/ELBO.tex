@@ -1,52 +1,13 @@
-\newcommand{\NUMBER}{10}
-\newcommand{\EXERCISES}{3}
-\newcommand{\DEADLINE}{01.02.2021}
-\newcommand{\COURSE}{Math for Last-Layer Variational Inference}
-\newcommand{\STUDENTA}{Philipp von Bachmann}
 \documentclass[a4paper]{scrartcl}
 \usepackage[utf8]{inputenc}
 \usepackage[english]{babel}
+\usepackage{pgfplots}
 \usepackage{amsmath, enumerate, amssymb, multirow, fancyhdr, color, graphicx, lastpage, listings, tikz, pdflscape, subfigure, float, polynom, hyperref, tabularx, forloop, geometry, listings, fancybox, tikz, forest, tabstackengine, cancel}
 \input kvmacros
 \geometry{a4paper,left=3cm, right=3cm, top=3cm, bottom=3cm}
 \pagestyle {fancy}
-\fancyhead[C]{\COURSE}
-\fancyhead[R]{\today}
-\fancyfoot[L]{}
-\fancyfoot[C]{}
-\fancyfoot[R]{Page \thepage /\pageref*{LastPage}}
-\def\header#1#2{
-  \begin{center}
-    {\Large Assignment #1}\\
-    %{(Due by: #2)}
-  \end{center}
-}
 
-\newcounter{punktelistectr}
-\newcounter{punkte}
-\newcommand{\punkteliste}[2]{%
-  \setcounter{punkte}{#2}%
-  \addtocounter{punkte}{-#1}%
-  \stepcounter{punkte}%<-- also punkte = m-n+1 = Anzahl Spalten[1]
-  \begin{center}%
-  \begin{tabularx}{\linewidth}[]{@{}*{\thepunkte}{>{\centering\arraybackslash} X|}@{}>{\centering\arraybackslash}X}
-      \forloop{punktelistectr}{#1}{\value{punktelistectr} < #2 } %
-      {%
-        \thepunktelistectr &
-      }
-      #2 &  $\Sigma$ \\
-      \hline
-      \forloop{punktelistectr}{#1}{\value{punktelistectr} < #2 } %
-      {%
-        &
-      } &\\
-      \forloop{punktelistectr}{#1}{\value{punktelistectr} < #2 } %
-      {%
-        &
-      } &\\
-    \end{tabularx}
-  \end{center}
-}
+
 \begin{document}
 
 \section{General Variational Inference}
@@ -155,12 +116,12 @@
       means the Kl-Divergence can be further simplified to:
       \begin{align}
           % &= \mathbb{E}_{q(\theta)} [\frac{1}{2}log(\prod_i\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{1}{2} \sum_i - (w_{l_i} - \mu_{q_i})^2 \Sigma^{-1}_{q_i} + (w_{l_i} - \mu_{p_i})^2 \Sigma^{-1}_{p_i}]\\
-          &= \frac{1}{2} \sum_{i=1}^n log(\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) - n + \frac{\Sigma_{q_i}}{\Sigma_{p_i}}  +  (\mu_{p_i} - \mu_{q_i})^2 \Sigma^{-1}_{p_i}
+          &= \frac{1}{2} (- n + \sum_{i=1}^n log(\frac{ \Sigma_{p_i}}{\Sigma_{q_i}}) + \frac{\Sigma_{q_i}}{\Sigma_{p_i}}  +  (\mu_{p_i} - \mu_{q_i})^2 \Sigma^{-1}_{p_i})
       \end{align}
 
       If we use a prior of $\mu_p=0$ and $\Sigma_p=Id$, then
       \begin{align}
-          &= \frac{1}{2} \sum_{i=1}^n - log(\Sigma_{q_i}) - n + \Sigma_{q_i} +  \mu_{q_i}^2
+          &= \frac{1}{2} (- n + \sum_{i=1}^n - log(\Sigma_{q_i}) + \Sigma_{q_i} +  \mu_{q_i}^2)
       \end{align}
           
       % later in pytroch use:
@@ -243,11 +204,11 @@ or $softmax(\Phi(X) E_{q(\theta)}[\theta])$.
   \end{align*}
   with added Noise for the last-layer weights during training
 
-  \subsection{Regression}
+  \subsection{Regression}\label{sec:SingleRegression}
     Assume we have a probability distribution $\theta \sim \mathcal{N}(\mu,
     \Sigma)$.
      Thus the forward pass $X\theta$ for a single sample becomes $X
-    (\mu + \Sigma \epsilon)$, so we can rewrite the training objective as
+    (\mu + \Sigma \epsilon)$, so we can rewrite the training objective (assuming unit data variance) as
     $\langle X (\mu + \Sigma \epsilon) - Y, X (\mu + \Sigma \epsilon) - Y\rangle$ and the derivative becomes
     \begin{align*}
       &\frac{\partial}{\partial \mu}\langle X (\mu + \Sigma \epsilon) - Y, X (\mu + \Sigma \epsilon) -Y \rangle\\
@@ -279,9 +240,87 @@ or $softmax(\Phi(X) E_{q(\theta)}[\theta])$.
       \Rightarrow \text{set to 0:}\\
       &0 = 2X^T(X \mu  - Y) \epsilon^T + 2 X^T X \Sigma \epsilon \epsilon^T\\
       - X^T X \mu \epsilon^T +  X^T Y \epsilon^T &= X^T X \Sigma \epsilon \epsilon^T\\
-      \mu \epsilon^T + (X^T X)^{-1} X^T Y &= \Sigma \epsilon \epsilon^T\\
-      \mu \epsilon^T (\epsilon \epsilon^T)^{-1} + (X^T X)^{-1} X^T Y (\epsilon \epsilon^T)^{-1}&= \Sigma\\
+      -\mu \epsilon^T + (X^T X)^{-1} X^T Y e^T &= \Sigma \epsilon \epsilon^T\\
+      -\mu \epsilon^{-1} + (X^T X)^{-1} X^T Y \epsilon^{-1}&= \Sigma\\ % not sure if this line holds since epsilon has no inverse on itself
     \end{align*}
+
+    So to solve we would:
+    \begin{align}
+      -\mu \epsilon^T + (X^T X)^{-1} X^T Y \epsilon^T &= \Sigma \epsilon \epsilon^T\\
+      - ((X^T X)^{-1} X^T Y + \Sigma \epsilon) \epsilon^T + (X^T X)^{-1} X^T Y \epsilon^T &= \Sigma \epsilon \epsilon^T\\
+      - (X^T X)^{-1} X^T Y \epsilon^T + (X^T X)^{-1} X^T Y \epsilon^T &= 2\Sigma \epsilon \epsilon^T\\
+      0 &= 2\Sigma \epsilon \epsilon^T\\
+    \end{align}
+
+
+    \subsection{Connection to Laplace}
+    Single Sample ELBO:
+    \begin{align*}
+      \sum_{i=1}^n \log{p(y_i \vert f_{\theta}(x_i))} - D_{KL}(q(\theta) \Vert p(\theta))\\
+    \end{align*}
+    for $\theta \sim \mathcal{N}(\mu,\Sigma)$.
+    If we redefine this loss as a probability distribution, more specific a Gibbs distribution, we have:
+    \begin{align*}
+      \prod_{i=1}^n p(y_i \vert f_{\theta}(x_i)) \cdot \exp(- D_{KL}(q(\theta) \Vert p(\theta)))\\
+    \end{align*}
+    so if we redefine the KL div as a prior over the weights, we have:
+    \begin{align*}
+      \prod_{i=1}^n p(y_i \vert f_{\theta}(x_i)) \cdot p(\theta)\\
+    \end{align*}
+    \subsubsection{Mean}
+      Maximizing wrt to $\theta$ gives $\theta_{MAP}$. This optimizes the same
+      equation as the Laplace approximation, however here the weights are sampled
+      from a distribution rather than taking the mean. To get to the same result as Laplace, we have two options:
+      \begin{itemize}
+        \item Assume the Variance of the weights is fixed at 0
+        \item Assume that by taking multiple passes over the data, the variance
+        just adds some noise to the weights which however will be 0 in
+        expectation, thus performing a kind of noise SGD.
+      \end{itemize}
+    \subsubsection{Variance}
+      The Laplace approximation for the Variance is:
+      \begin{equation}
+        \Sigma = (- \nabla^2 \log p(\theta \vert D) \vert_{\theta_{MAP}})^{-1} = (- \nabla^2 \log p(D \vert \theta) \vert_{\theta_{MAP}} - \log p(\theta))^{-1}
+      \end{equation}
+      % If we go to the regression case, we saw in \ref{sec:SingleRegression} that
+      For the laplace approximation in case of regression, we need to compute:
+      \begin{align}
+        \nabla^2_{\mu} \log p(\theta \vert D)
+        &\propto \nabla^2_{\mu} \langle X \mu - Y, A^{-1} (X \mu -Y) \rangle \\
+        &= \nabla_{\mu} 2 X^T A^{-1} (X\mu - Y)\\
+        &= 2 X^T A^{-1} X 
+      \end{align} which is constant since independent of $\theta_{MAP}$. Now we take the inverse:
+      $= \frac{1}{2}  X^{-1} A X^{T^{-1}}$
+
+      For VI, we get the general derivative as, see section \ref{sec:SingleRegression} :
+      \begin{align}
+        -((X^T X)^{-1} X^T Y + \Sigma \epsilon) \epsilon^T (\epsilon \epsilon^T)^{-1} + (X^T X)^{-1} X^T Y (\epsilon \epsilon^T)^{-1}&= \Sigma\\
+        2 (X^T X)^{-1} X^T Y (\epsilon \epsilon^T)^{-1} & = 2 \Sigma\\ % TODO: verify
+         (X^T X)^{-1} X^T Y (\epsilon \epsilon^T)^{-1} &=  \Sigma
+      \end{align}
+
+
+    
+    
+
+
+
+    \subsection{KL Divergence}
+    For Diagonal with zero mean prior and variance of 1, the kl divergence is
+    \begin{align}
+      \frac{1}{2}  (- n + \sum_{i=1}^n - \log(\Sigma_{q_i}) + \Sigma_{q_i} +  \mu_{q_i}^2)
+    \end{align}
+    So the last term is just normal weight decay, for the variance we can do a plot\\
+    \begin{tikzpicture}
+      \begin{axis}[xmin = 0, xmax = 5]
+        \addplot[        
+        domain = 0:30,
+        samples = 200,
+        smooth,
+        thick,
+        blue,] {-ln(x)+x};
+      \end{axis}
+    \end{tikzpicture}
 
 
 
