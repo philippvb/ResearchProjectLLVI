@@ -1,5 +1,4 @@
 from abc import ABC, abstractmethod, abstractproperty
-from pydantic.dataclasses import dataclass
 import torch
 
 
