@@ -45,7 +45,7 @@
             \frametitle{Regression}
             \begin{itemize}
                 \item The expected log-likelihood $\mathbb{E}_{q_{\phi}(\theta)}[\log{p(y \vert f_{\theta}(x))}]$ has a closed form solution in the Regression case.
-                \item The solution gives a lower bound for approximation (like MC) on ELBO in practice.
+                \item The solution gives a lower bound for approximations (like Monte-Carlo) on the ELBO in practice.
                 \item This leads to faster convergence.
             \end{itemize}
             \begin{figure}
@@ -57,27 +57,29 @@
             \frametitle{Classification}
             \begin{itemize}
                 \item No closed-form solution
-                \item However multiple approximations like Jennsen, Bohning
-                \item Perform worse than Monte-Carlo
+                \item However multiple approximations like Jennsen, Bohning exist.
+                \item But they perform worse than Monte-Carlo
             \end{itemize}
         \end{frame}
         
         \section{Last-Layer vs FUll}
         \begin{frame}
             \frametitle{Regression}
-            \begin{itemize}
-                \item Full layer has better solution, especially higher in-between uncertainty
-                \item Last-Layer converges way faster 
-            \end{itemize}
             \begin{columns}
-                \begin{column}{0.5\textwidth}
-                    \begin{figure}
-                        \includegraphics[width=\textwidth]{images/RegressionLLvsFULL.png}
-                    \end{figure}
+                \begin{column}{0.6\textwidth}
+                \begin{itemize}
+                    \item Use closed-form for Last-Layer vs single sample MC for Full-layer training
+                    \item Full layer has better solution, especially higher in-between uncertainty
+                    \item Last-Layer training and predicting is faster
+                \end{itemize}
+                \begin{figure}
+                    \includegraphics[width=0.8\textwidth]{images/Regression/LLvsFullMSE.jpg}
+                \end{figure}
                 \end{column}
-                \begin{column}{0.5\textwidth}
+                \begin{column}{0.4\textwidth}
                     \begin{figure}
-                        \includegraphics[width=\textwidth]{images/RegressionLLvsFullEpoch.png}
+                        \vspace*{-2cm}
+                        \includegraphics[height=0.8\textheight]{images/Regression/LLvsFull.jpg}
                     \end{figure}
                 \end{column}
             \end{columns}
@@ -85,8 +87,11 @@
 
         \begin{frame}
             \frametitle{Classification: MNIST}
+            \begin{itemize}
+                \item For more complex models (eg. MNIST), the computational advantage of LL becomes more drastic
+            \end{itemize}
             \begin{figure}
-                \includegraphics[width=\textwidth]{images/Classification/LLvsFull.jpg}
+                \includegraphics[width=0.8\textwidth]{images/Classification/LLvsFull.jpg}
             \end{figure}
         \end{frame}
 
@@ -99,19 +104,26 @@
                 \item Claim: Laplace approximation is equivalent to Natural Gradient Descent for VI
                 \item Bayesian Learning Rule which can be derived from VI:     
                     \begin{equation}
-                        \lambda_{t+1} \leftarrow \lambda_{t} - \rho \tilde{\nabla}_\lambda E_{q_t}[l(\theta) - H(q_t)]
+                        \lambda_{t+1} \leftarrow \lambda_{t} - \rho \tilde{\nabla}_\lambda E_{q_t}[L(\theta) - H(q_t)]
                     \end{equation}
-                    where $\lambda$ natural parameters, $\tilde{\nabla}$ natural gradient
+                    where $\lambda$ natural parameters, $\tilde{\nabla}$ natural gradient, $L$ Loss and $H$ Entropy
                 \item If $q = \mathcal{N}(m, S^{-1})$, the update for precision $S$ becomes:
                     \begin{equation}
-                        S_{t+1} = (1 - \rho_t) S_t + \rho_t E_{q_t}[\nabla^2_\theta l(\theta)]
+                        S_{t+1} = (1 - \rho_t) S_t + \rho_t E_{q_t}[\nabla^2_\theta L(\theta)]
                     \end{equation}
                 \item Equivalent to online-computation of the Hessian
             \end{itemize}
         \end{frame}
 
         \begin{frame}
-            Laplace initializations
+            \frametitle{Laplace initialization}
+            \begin{itemize}
+                \item Idea: Use Laplace approximation as initialization for VI
+                \item Usage: \begin{itemize}
+                    \item Speed up training
+                    \item Pretrained networks
+                \end{itemize}
+            \end{itemize}
         \end{frame}
         
         
