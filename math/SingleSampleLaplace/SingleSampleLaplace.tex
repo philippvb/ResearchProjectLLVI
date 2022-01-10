@@ -11,10 +11,10 @@
 \begin{document}
 
 
-
-\section{Single Sample ELBO vs Laplace}
+\title{Single Sample ELBO vs Laplace}
+\maketitle
 We want to show that the parameters of the gaussian of the weight distribution
-when optimizing the ELBO is the same as standard optimization with a following
+when optimizing the ELBO is the same as standard optimization with a subsequent
 laplace approximation. 
 
 \section{General Objective function}
@@ -116,6 +116,55 @@ laplace approximation.
 
       % Here we would need to take the derivative wrt a cholesky, complicated but doable for example https://mathoverflow.net/questions/150427/the-derivative-of-the-cholesky-factor
 
+
+
+  \section{Results from Papers}
+      Outline of proof:
+      \begin{enumerate}
+        \item We can show that Laplace is equal to the Bayesian Learning Rule
+        \item The bayesian learning rule is equal to VI 
+        \item Therefore Laplace is equal to VI
+      \end{enumerate}
+
+      We can see that even in equation 44 and 46 of the BLR paper: Here both are
+      expressed in terms of the BLR, however we see that Laplace approximates
+      the expectation whereas VI computes the actual one.
+
+      In a more intuitive sense, we see that VI updates the Variance with a
+      moving average of the Hessian, see equation 7 of paper `Noisy Natural
+      Gradient as Variational Inference`. Since Laplace uses the Hessian as the
+      approximation for the Variance, and if we assume to compute the Hessian
+      online, we arrive at Laplace.
+
+  \section{Outline proof with paper}
+    Suppose we want to optimize a loss function $l(\theta)$ returning a
+    probability distribution $q(\theta)$ over the parameters. The bayesian
+    learning rule says that in this case, we should update the natural
+    parameters $\lambda$ of $q$ with:
+    \begin{equation}
+      \lambda_{t+1} \leftarrow \lambda_{t} - \rho \tilde{\nabla}_\lambda E_{q_t}[l(\theta) - H(q_t)]
+    \end{equation}
+    where $H(q_t)$ is the entropy and $\tilde{\nabla}$ the Natural Gradient.
+    Furthermore, this update is equal to optimizing Variational Inference on the
+    inital problem.
+
+    Now let $q$ be a Normal with unknown mean $m$ and precision $S$. It can be shown that
+    in this case, the updates become:
+    \begin{equation}
+      m_{t+1} = m_t - \rho_t S^{-1} E_{q_t} [\nabla_\theta l(\theta)]
+    \end{equation}
+    and 
+    \begin{equation}
+      S_{t+1} = (1 - \rho_t) S_t + \rho_t E_{q_t}[\nabla^2_\theta l(\theta)]
+    \end{equation}
+    Here, we see that our Precision gets updated with the Hessian, which means
+    we get the same result as if we would do an online computation of the
+    Hessian during training in Laplace.
+
+    We get similar result in the two other papers, see equation 7 in Noisy
+    Natural Gradient and equation 7 and 8 in Fast and Scalable.
+
+    
 
 \end{document}
 
