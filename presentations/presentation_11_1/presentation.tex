@@ -1,5 +1,5 @@
 \documentclass{beamer}
-\usepackage{graphicx}
+\usepackage{graphicx, tabularx}
 \usetheme{Singapore}
 
 \def\UrlBreaks{\do\/\do-} % URL breaks
@@ -44,9 +44,9 @@
         \begin{frame}
             \frametitle{Regression}
             \begin{itemize}
-                \item The expected log-likelihood $\mathbb{E}_{q_{\phi}(\theta)}[\log{p(y \vert f_{\theta}(x))}]$ has a closed form solution in the Regression case.
-                \item The solution gives a lower bound for approximations (like Monte-Carlo) on the ELBO in practice.
-                \item This leads to faster convergence.
+                \item Expected log-likelihood $\mathbb{E}_{q_{\phi}(\theta)}[\log{p(y \vert f_{\theta}(x))}]$ has a closed-form solution in the Regression case
+                \item Loss function becomes more stable compared to Monte-Carlo sampling
+                \item Leads to faster convergence
             \end{itemize}
             \begin{figure}
                 \includegraphics[width=0.7\textwidth]{images/Regression/CFvsMC.jpg}
@@ -56,21 +56,40 @@
         \begin{frame}
             \frametitle{Classification}
             \begin{itemize}
-                \item No closed-form solution
-                \item However multiple approximations like Jennsen, Bohning exist.
-                \item But they perform worse than Monte-Carlo
+                \item No closed-form solution, but multiple approximations exist
+                \item However, they perform worse than Monte-Carlo sampling
+                \item Possible explanation: MC as noisy Stochastic Gradient-Descent
             \end{itemize}
+            \begin{figure}
+                \includegraphics[width=0.7\textwidth]{images/Classification/CFvsMC.jpg}
+            \end{figure}
         \end{frame}
         
-        \section{Last-Layer vs FUll}
+        \section{Last-Layer vs Full Layer VI}
+        \begin{frame}
+            \frametitle{Overview}
+            Advantages of Last-Layer
+            \begin{itemize}
+                \item Scale better with network size
+                \item Closed-form solutions or approximations for the log-likelihood available
+                \item Prediction is faster because of closed-form (Regression) or easy approximations (Classification, Probit)
+            \end{itemize}
+            Disadvantages
+            \begin{itemize}
+                \item Not all parameters are treated Bayesian
+                \item Less complex, could therefore underfit
+            \end{itemize}
+        \end{frame}
+
+
         \begin{frame}
             \frametitle{Regression}
             \begin{columns}
                 \begin{column}{0.6\textwidth}
                 \begin{itemize}
-                    \item Use closed-form for Last-Layer vs single sample MC for Full-layer training
-                    \item Full layer has better solution, especially higher in-between uncertainty
-                    \item Last-Layer training and predicting is faster
+                    \item Use closed-form for Last-Layer versus single sample MC for Full-Layer training.
+                    \item Full-Layer has better solution, especially higher in-between uncertainty.
+                    \item Last-Layer training and predicting is faster.
                 \end{itemize}
                 \begin{figure}
                     \includegraphics[width=0.8\textwidth]{images/Regression/LLvsFullMSE.jpg}
@@ -88,11 +107,24 @@
         \begin{frame}
             \frametitle{Classification: MNIST}
             \begin{itemize}
-                \item For more complex models (eg. MNIST), the computational advantage of LL becomes more drastic
+                \item For more complex models (eg. MNIST), the computational advantage of Last-layer becomes more drastic
+                \item Performance is similar
             \end{itemize}
-            \begin{figure}
-                \includegraphics[width=0.8\textwidth]{images/Classification/LLvsFull.jpg}
-            \end{figure}
+            \begin{columns}
+                \begin{column}{0.5\textwidth}
+                    \begin{figure}
+                        \includegraphics[width=1.1\textwidth]{images/Classification/LLvsFull.jpg}
+                    \end{figure}                  
+                \end{column}
+                \begin{column}{0.5\textwidth}                
+                    \begin{tabular}{p{0.4\textwidth}|p{0.2\textwidth}|p{0.2\textwidth}}
+                        Accuracy\\ (in \%)&Full-Layer & Last-Layer\\
+                        \hline
+                        Test dataset & 93.5 & 94.2\\
+                        OOD dataset & 68 & 72
+                    \end{tabular}
+                \end{column}
+            \end{columns}
         \end{frame}
 
 
@@ -117,13 +149,28 @@
 
         \begin{frame}
             \frametitle{Laplace initialization}
-            \begin{itemize}
-                \item Idea: Use Laplace approximation as initialization for VI
-                \item Usage: \begin{itemize}
-                    \item Speed up training
-                    \item Pretrained networks
-                \end{itemize}
-            \end{itemize}
+            \begin{columns}
+                \begin{column}{0.5\textwidth}
+                    \begin{itemize}
+                        \item Idea: Use Laplace approximation as initialization for VI
+                        \item Scenarios:
+                            \begin{itemize}
+                                \item Pretrained networks
+                                \item Speed up training
+                            \end{itemize}
+                    \end{itemize}    
+                \end{column}
+                \begin{column}{0.5\textwidth}                    
+                    \begin{figure}
+                        \includegraphics[width=\textwidth]{images/Classification/LaplaceInit.png}
+                    \end{figure}
+                    \begin{tabular}{cccc}
+                        &laplace & vilaplace & virefined \\
+                        test & 91.9 & 93.2 & 51.5 \\
+                        ood & 67.8 & 69.6 & 36.8
+                    \end{tabular}
+                \end{column}
+            \end{columns}
         \end{frame}
         
         
@@ -160,3 +207,9 @@
 
 
 \end{document}
+
+% TODO:
+- all plots hline
+- complete Advantages
+- make plot cf for classification
+- make plot init for laplace
