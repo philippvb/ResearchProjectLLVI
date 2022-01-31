@@ -1,0 +1,224 @@
+\documentclass[a4paper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{pgfplots}
+\usepackage{amsmath, enumerate, amssymb, multirow, fancyhdr, color, graphicx, lastpage, listings, tikz, pdflscape, subfigure, float, polynom, hyperref, tabularx, forloop, geometry, listings, fancybox, tikz, forest, tabstackengine, cancel}
+\input kvmacros
+\geometry{a4paper,left=3cm, right=3cm, top=3cm, bottom=3cm}
+\pagestyle {fancy}
+
+
+\begin{document}
+
+
+\title{VI vs Laplace}
+\maketitle
+
+\section{Mathematical derivation}
+  \subsection{Natural Gradient for Gaussian distributions}
+
+    Assume we have a loss function $L(\lambda)$ which depends on the natural
+    parameters $\lambda$ of a distribution $q$, which is Gaussian with natural
+    parameters and mean parameters:
+    \begin{align*}
+        \lambda_1 = \Sigma^{-1} \mu\\
+        \lambda_2 = - \frac{1}{2} \Sigma^{-1}\\
+        m_1 = \mu\\
+        m_2 = \mu \mu^T + \Sigma
+    \end{align*}
+    It can be shown that in this case, the gradient wrt the mean parameters becomes,
+    % note that we can express it again in terms of the normal gradient wrt mean parameters
+    \begin{align*}
+        \nabla_{m_1} L = \nabla_\mu L - 2 [\nabla_\Sigma L]\\
+        \nabla_{m_2} L = \nabla_\Sigma L
+    \end{align*}
+    If we perform natural gradient VI in natural parameter space, we get the update rule:
+    \begin{align*}
+      \lambda_{t+1} = \lambda_t + \rho_t \nabla_m L(m_t)
+    \end{align*}
+    which says, that natural gradient in natural parameter space can be expressed using
+    a derivative for the mean parameters. Thus, we can plug our gaussian natural
+    parameters in and rearrange for mean and precision, which leads to the
+    following update
+    \begin{align*}
+        \Sigma_{t+1}^{-1} = \Sigma^{-1}_t - 2 \rho [\nabla_\Sigma L_t]\\
+        \mu_{t+1} = \mu_t + \rho \Sigma_{t+1} [\nabla_\mu L_t]
+    \end{align*}
+
+  \subsection{Plugging in the ELBO}\label{sec:ELBO}
+    We can express the ELBO by: 
+    \begin{align*}
+      L(\mu, \Sigma) = \mathbb{E}_q[-N f(\theta) + \log(p(\theta)) - \log(q(\theta))]
+    \end{align*}
+    By Bonnets and Price,
+    \begin{align*}
+      \nabla_\mu \mathbb{E}_q[f(\theta)] = \mathbb{E}_q[g(\theta)]\\
+      \nabla_\Sigma \mathbb{E}_q[f(\theta)] = \mathbb{E}_q[H(\theta)]\\
+    \end{align*}
+    where $g(\theta) = \nabla_\theta f(\theta)$ and $H(\theta) = \nabla^2_{\theta\theta} f(\theta)$.\\
+    We can rewrite the gradients for the update of the mean and variance and
+    thus plug in to above ($\alpha$ arises from prior):
+    % see fast appendix d
+    \begin{align*}
+      \Sigma_{t+1}^{-1} = (1-\rho)\Sigma^{-1}_t + \rho \mathbb{E}_{q_t}[N H(\theta_t) + \alpha I]\\
+      \mu_{t+1} = \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[N g(\theta_t) + \alpha \mu_t]
+    \end{align*}
+
+  In the paper Bayesian Learning Rule, they include the prior in the loss
+  function as $\bar{l} = f(\theta) + \log{p(\theta)}$ and therefore get rid of the
+  alpha terms:
+  \begin{align*}
+    \Sigma_{t+1}^{-1} = (1-\rho)\Sigma^{-1}_t + \rho \mathbb{E}_{q_t}[\nabla^2_{\theta\theta} \bar{l}(\theta)]\\
+    \mu_{t+1} = \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[\nabla_{\theta} \bar{l}(\theta)]
+  \end{align*}
+
+  \subsection{Making Laplace and VI equal}
+
+    \subsubsection{Expectation}
+      In our update equations, we see that we need to compute the expectation
+      over a gradient. 
+      \begin{itemize}
+        \item We could get to frequentist training by applying the
+        delta method.
+        \item If we train VI with single-sample, we would just need a weight pertubation in Laplace
+      \end{itemize}
+
+    \subsubsection{Online-Computation of the Hessian}
+      Problem: We don't want to use online computation of Hessian for Laplace,
+      but rather compute it afterwards at $\theta_*$\\
+      Solution: We converge to an unbiased estimate of the $h(\theta_*)$ if we
+      train long enough.
+
+    \subsubsection{Newton optimization in frequentist training}
+      In frequentist training, we would need to use Netwon-updates for optimization.
+      However if we use momentum in VI, it can be shown that it is the same as
+      Adam on the original objective plus an added weight pertubation, which we
+      could get rid of with the delta method.
+
+
+
+\section{Examples}
+
+\subsection{Last-Layer Regression}
+  We treat earlier layers as feature extractor of the features $\phi_x$ and
+  since we optimizer it the standard way in VI as well, disregard them. We have
+  the log-likelihood $f(\theta) = - \frac{1}{N} \sum_i \log(p(y_i \vert x_i,
+  \theta))$ and assume our prior is $p(\theta) = \mathcal{N}(0, 1)$ which is
+  regular weight-decay up to a constant.
+
+  \subsubsection{Frequentist approach}
+    Our Loss function with L2 Reguralization is (where $A$ is data noise):
+    \begin{align*}
+      L(\theta) &= f(\theta) + \alpha \cdot \theta^2 \\
+      &= \frac{k}{2}\log{2\pi} + \frac{1}{2} \log(\vert A^{-1} \vert) + (\phi_{X}\theta - y)^T A^{-1} (\phi_{X}\theta - y) + \alpha \cdot \theta^2\\
+    \end{align*}
+
+    taking the first and second order derivative wrt $\theta$:
+    \begin{align*}
+      \nabla_\theta L(\theta) &= 2 \phi_X^T A (\phi_{X} \theta - y) + 2 \alpha \theta\\
+      \nabla^2_{\theta\theta} L(\theta) &= 2 \phi_X^T A \phi_{X} + 2 \alpha\\
+    \end{align*}
+
+    so if we do Newton steps our update would look like:
+    \begin{align*}
+      \theta_{t+1} &= \theta_t - \rho \cdot (2 \phi_X^T A \phi_{X} + 2 \alpha)^{-1} \cdot (2 \phi_X^T A (\phi_{X} \theta - y) + 2 \alpha \theta)\\
+    \end{align*}
+
+    After $n$ steps our laplace approximation would become:
+    \begin{align*}
+      q(\theta) = \mathcal{N}(\theta_n, 2 \phi_X^T A \phi_{X} + 2 \alpha)
+    \end{align*}
+
+  \subsubsection{VI}
+    Even though our objective function is the ELBO, we have seen in section
+    \ref{sec:ELBO} that we can derive easier update rules.
+
+    \begin{align*}
+      \Sigma_{t+1}^{-1} = (1-\rho)\Sigma^{-1}_t + \rho \mathbb{E}_{q_t}[\nabla^2_{\theta\theta} \bar{l}(\theta)]\\
+      \mu_{t+1} = \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[\nabla_{\theta} \bar{l}(\theta)]
+    \end{align*}
+
+    As we have already computed the necessary derivatives before, we can just plug them in:
+    \begin{align*}
+      \Sigma_{t+1}^{-1}
+      &= (1-\rho)\Sigma^{-1}_t + \rho \mathbb{E}_{q_t}[2 \phi_X^T A \phi_{X} + 2 \alpha]\\
+      &= (1-\rho)\Sigma^{-1}_t + \rho (2 \phi_X^T A \phi_{X} + 2 \alpha)\\
+      &= 2 \phi_X^T A \phi_{X} + 2 \alpha\\
+    \end{align*}
+    where the last step follows since the second order derivative is constant.
+    \begin{align*}
+      \mu_{t+1} 
+      &= \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[\nabla_{\theta} \bar{l}(\theta)]\\
+      &= \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[2 \phi_X^T A (\phi_{X} \theta - y) + 2 \alpha \theta]\\
+      &= \mu_t - \rho \Sigma_{t+1} (2 \phi_X^T A (\phi_{X} \mu - y) + 2 \alpha \mu)\\
+      &= \mu_t - \rho (2 \phi_X^T A \phi_{X} + 2 \alpha)^{-1} (2 \phi_X^T A (\phi_{X} \mu - y) + 2 \alpha \mu)\\
+    \end{align*}
+    Now we have the same update for both cases.
+
+    Normally, step three follows from a delta approximation, however in this casem, it is exact.
+      
+\section{Evidence in Laplace is same as ELBO}
+    \subsection{Laplace}
+      In Laplace, we want to approximate $p(\theta \vert D) =
+      \frac{1}{Z}h(\theta)$ by a distribution $q(\theta \vert D)$ over our
+      parameters after training with Loss $L(\theta, D) \propto h(\theta)$. We
+      can show that in the case of a second-order Talor expansion of
+      $h(\theta)$, this estimation is given by a Gaussian: $q(\theta \vert D) =
+      \mathcal{N}(\theta_{MAP}, -(\nabla^2_\theta
+      L(\theta)\vert_{\theta_{MAP}})^{-1})$. The normalization constant of this
+      Gaussian is therefore $p(D) = Z =
+      \exp(-L(\theta_{MAP}))(2\pi)^{\frac{D}{2}} \det(\Sigma)^{\frac{1}{2}}$. Taking the logarithm yields $\log(Z) = -L(\theta_{MAP}) + H(q(\theta \vert D))$.
+
+    \subsection{VI}
+      In VI, we want to approximate the posterior $p(\theta \vert D)$ by
+      minimizing the KL divergence between the posterior and a approximate
+      distribution $q(\theta)$. It can be shown that this is equivalent to maximizing the ELBO:
+      $E_q[\log(p(D \vert \theta))] - D_{KL}(q(\theta), p(\theta)) = E_q[L(\theta)] + H(q)$.
+
+    \subsection{Ideas to unite}
+      \subsubsection{just train Laplace with ELBO}
+        We could just say we train Laplace with the Evidence/ELBO all the time,
+        however this gives the following problems:
+        \begin{itemize}
+          \item Laplace approximation is technically only valid at $\theta_{MAP}$.
+          \item 
+        \end{itemize}
+
+
+      \subsubsection{Equality}
+      \begin{itemize}
+        \item Laplace approximations are the same as VI, since we approximate the
+        Evidence the same way.
+        \item In case of VI and because we know that Variance is same as
+        Hessian, the normalization constants are the same.
+      \end{itemize}
+
+    \subsection{The big question}
+      Why does Taylor-expanding $log(h(\theta))$ yield the ELBO?
+      \begin{itemize}
+        \item If we take a Gaussian approximation for in the ELBO, we get the
+        best Gaussian approximation by setting the variance to the inverse Hessian of $h(\theta)$
+        \item If we instead Taylor expand $h(\theta)$, we get the same Gaussian,
+        because we have the Hessian in there.
+      \end{itemize}
+
+    \subsection{Idea for nice proof}
+      If we have a MAP estimate, maximizing the ELBO wrt just the Variance gives
+      us the Laplace approximation. For proof, just see fast paper
+
+
+    \subsection{Where do we get the connection}
+      \begin{itemize}
+        \item Big point: For Gaussian distributions, maximing wrt a Loss
+        function gives the inverse Hessian as the best approximation for the variance
+        \item Hessian is the same as second order Taylor expansion of the Loss function
+        \item We also see this connection as a delta approximation to the ELBO also appears in Laplace as a approximation of the Evidence.
+      \end{itemize}
+
+
+
+    
+
+
+\end{document}
+
