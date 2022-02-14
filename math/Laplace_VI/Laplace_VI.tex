@@ -100,7 +100,7 @@
 \section{Examples}
 
 \subsection{Last-Layer Regression}
-  We treat earlier layers as feature extractor of the features $\phi_x$ and
+  We treat earlier layers as feature extractor of the features $\phi_X$ and
   since we optimizer it the standard way in VI as well, disregard them. We have
   the log-likelihood $f(\theta) = - \frac{1}{N} \sum_i \log(p(y_i \vert x_i,
   \theta))$ and assume our prior is $p(\theta) = \mathcal{N}(0, 1)$ which is
@@ -158,66 +158,201 @@
     Normally, step three follows from a delta approximation, however in this casem, it is exact.
       
 \section{Evidence in Laplace is same as ELBO}
-    \subsection{Laplace}
-      In Laplace, we want to approximate $p(\theta \vert D) =
-      \frac{1}{Z}h(\theta)$ by a distribution $q(\theta \vert D)$ over our
-      parameters after training with Loss $L(\theta, D) \propto h(\theta)$. We
-      can show that in the case of a second-order Talor expansion of
-      $h(\theta)$, this estimation is given by a Gaussian: $q(\theta \vert D) =
-      \mathcal{N}(\theta_{MAP}, -(\nabla^2_\theta
-      L(\theta)\vert_{\theta_{MAP}})^{-1})$. The normalization constant of this
-      Gaussian is therefore $p(D) = Z =
-      \exp(-L(\theta_{MAP}))(2\pi)^{\frac{D}{2}} \det(\Sigma)^{\frac{1}{2}}$. Taking the logarithm yields $\log(Z) = -L(\theta_{MAP}) + H(q(\theta \vert D))$.
 
-    \subsection{VI}
-      In VI, we want to approximate the posterior $p(\theta \vert D)$ by
-      minimizing the KL divergence between the posterior and a approximate
-      distribution $q(\theta)$. It can be shown that this is equivalent to maximizing the ELBO:
-      $E_q[\log(p(D \vert \theta))] - D_{KL}(q(\theta), p(\theta)) = E_q[L(\theta)] + H(q)$.
-
-    \subsection{Ideas to unite}
-      \subsubsection{just train Laplace with ELBO}
-        We could just say we train Laplace with the Evidence/ELBO all the time,
-        however this gives the following problems:
-        \begin{itemize}
-          \item Laplace approximation is technically only valid at $\theta_{MAP}$.
-          \item 
-        \end{itemize}
+Here, we show a new way in which the ELBO arises from the Laplace
+approximation. We start by trying to approximate $p(\theta \vert D)
+= \frac{1}{Z}h(\theta)$ by a distribution $q(\theta \vert D)$ over
+our parameters after training with Loss $L(\theta, D) \propto
+h(\theta)$. We can show that in the case of a second-order Talor
+expansion of $h(\theta)$, this estimation is given by a Gaussian:
+$q(\theta \vert D) = \mathcal{N}(\theta_{MAP}, -(\nabla^2_\theta
+L(\theta)\vert_{\theta_{MAP}})^{-1})$. The normalization constant of
+this Gaussian is therefore $p(D) = Z =
+\exp(-L(\theta_{MAP}))(2\pi)^{\frac{D}{2}}
+\det(\Sigma)^{\frac{1}{2}}$. Taking the logarithm yields $\log(Z) =
+-L(\theta_{MAP}) + H(q(\theta \vert D))$, which is also known as the
+ELBO. NOTE: constant is missing. Therefore, the ELBO can be seen as a second-order Taylor
+expansion together with the delta method, given we are at
+$\theta_{MAP}$.
 
 
-      \subsubsection{Equality}
-      \begin{itemize}
-        \item Laplace approximations are the same as VI, since we approximate the
-        Evidence the same way.
-        \item In case of VI and because we know that Variance is same as
-        Hessian, the normalization constants are the same.
-      \end{itemize}
+In other words, by assuming a Gaussian distribution, we loose all
+higher than second-order terms to the KL-Divergence:
+\begin{align*}
+    log(p(x)) = D_{KL}(q(\theta \vert D) \vert p(\theta \vert D)) + ELBO
+\end{align*}
+Here we capture all up to second-order terms of the true posterior
+by choosing a normal distribution and fail to approximate all higher
+order terms whose loss is then captured in the KL divergence..
 
-    \subsection{The big question}
-      Why does Taylor-expanding $log(h(\theta))$ yield the ELBO?
-      \begin{itemize}
-        \item If we take a Gaussian approximation for in the ELBO, we get the
-        best Gaussian approximation by setting the variance to the inverse Hessian of $h(\theta)$
-        \item If we instead Taylor expand $h(\theta)$, we get the same Gaussian,
-        because we have the Hessian in there.
-      \end{itemize}
-
-    \subsection{Idea for nice proof}
-      If we have a MAP estimate, maximizing the ELBO wrt just the Variance gives
-      us the Laplace approximation. For proof, just see fast paper
+\subsection{Where does that relationship come from}
+    The first part jut arises from the delta approximation. The
+    second part comes that in case of Natural-Gradient VI, the
+    variance is given by the hessian, thus the second order part of
+    the taylor expansion.
 
 
-    \subsection{Where do we get the connection}
-      \begin{itemize}
-        \item Big point: For Gaussian distributions, maximing wrt a Loss
-        function gives the inverse Hessian as the best approximation for the variance
-        \item Hessian is the same as second order Taylor expansion of the Loss function
-        \item We also see this connection as a delta approximation to the ELBO also appears in Laplace as a approximation of the Evidence.
-      \end{itemize}
+\subsection{A different view}
+We saw already that second-order taylor approximating $h(\theta)$
+yields the Laplace approximation, which is the same as VI for
+gaussians. We can also see this connection by noting that both
+Laplace and VI approximate the evidence in the same way. This
+happens because we see that the VI only contains second-order terms,
+which means that a second-order taylor will capture everything.
+
+
+\subsection{Can we train with the marginal likelihood in Laplace}
+The log marginal likelihood is given by:
+\begin{align*}
+    \log Z(\theta) =-L(\theta_{MAP}))+ \frac{D}{2}\log(2\pi) + \frac{1}{2}\log\det(\Sigma)
+\end{align*}
+Therefore, our gradient 
+\begin{align}
+    \nabla_\theta log(Z) 
+    &= ... + \frac{1}{2} \frac{1}{det(\Sigma)}\cdot TR(\Sigma^{-1} \frac{\partial \Sigma}{\partial x})\\
+    &= ... + \frac{1}{2} \frac{1}{det(-(\nabla^2_\theta L(\theta)^{-1})}\cdot TR(\nabla^2_\theta L(\theta) \cdot  \nabla^3_\theta L(\theta))\\
+\end{align}
+
+Which shouldn't be the same as the ELBO updates. Problem: Normally
+we set $\Sigma$ to the Hessian but we never propagate it through. 
+
+\subsection{Last-Layer Marginal Likelihood for Regression}
+  In case of Regression, we have the closed form second-order derivative:
+  \begin{align}
+    \nabla^2_\theta \log p(y, \theta \vert x) &= \phi_X^T \phi_X A^{-1^T} + \log p(\theta)\\
+    &= - \phi_X^T \phi_X A^{-1^T} + 1\\
+  \end{align}
+  see also bishop 3.81.
+
+  The problem is now that our next derivative becomes 0 wrt the ll weights, thus
+  it isn't included in the gradient.
+
+  However, we can take the Fisher instead:
+  \begin{align}
+    &E_{p(y \vert x, \theta)}[\nabla_\theta \log(p(y \vert x, \theta)) \cdot \nabla_\theta \log(p(y \vert x, \theta))^T]\\
+    &= E_{p(y \vert x, \theta)}[\Phi_X^T (f(x, \theta) - y) \cdot (\Phi_X^T (f(x, \theta) - y))^T]\\
+    &= E_{p(y \vert x, \theta)}[\Phi_X^T (f(x, \theta) - y) \cdot (f(x, \theta) - y) \Phi_X ]\\
+    &= E_{p(y \vert x, \theta)}[\Phi_X^T (f(x, \theta) - y)^2 \Phi_X ]\\
+  \end{align}
+
+
+  \subsection{Sigmoid classification}
+    \begin{align}
+      \nabla^2_\theta -\log p(y \vert \theta, x) 
+      &= \nabla^2_\theta - \sum_i y_i \log(f(x_i, \theta)) + (1 - y_i) \log(1-f(x_i, \theta))\\
+      &= \nabla_\theta \sum_i (f(x_i, \theta)- y_i) \phi_{X_i}\\
+      &= \sum_i \frac{\partial f(x_i, \theta)}{ \partial \theta} \phi_{X_i}\\
+      &= \sum_i f(x_i, \theta) \cdot (1 - f(x_i, \theta)) \cdot \phi_{X_i}^2\\
+    \end{align}
+    according to Bishop 4.91
+    \begin{align}
+      \nabla_\theta f(x_i, \theta) 
+      &= \nabla_\theta \sigma(\phi_{X_i} \theta)\\
+      &= \sigma(\phi_{X_i} \theta) \cdot (1 - \sigma(\phi_{X_i} \theta)) \cdot \nabla_\theta \phi_{X_i} \theta \\
+      &= \sigma(\phi_{X_i} \theta) \cdot (1 - \sigma(\phi_{X_i} \theta)) \cdot \phi_{X_i}\\
+      &= f(x_i, \theta) \cdot (1 - f(x_i, \theta)) \cdot \phi_{X_i}\\
+    \end{align}
 
 
 
+
+
+\section{Post-hoc Laplace is nearly as good as post-hopc VI}
+The main point is that at $\theta_{MAP}$, Laplace approximation is the same
+as continuing to train with Variational Inference. Thus, the question is not
+if Laplace is a good method, but rather how expensive we want to be during
+training.
+
+My main point is that we shouldn't choose frequentist training because we
+have Laplace to save us, but if we have other constrains why VI is
+infeasible (eg computationally), then Laplace is a good way to still get a
+approximation for a weight distribution.
+
+\subsection{Laplace is the same as VI at $\theta_{MAP}$}
+
+    Suppose we train a neural network with the loss function
+    \begin{align}
+        L(\theta) = h(\theta) = \log(p(D\vert \theta) p(\theta))
+    \end{align}
+    which is standard $MAP$ inference for DNNs. At the end of training, we
+    arrive at a point $\theta_{MAP}$. Now we want to employ a distribution
+    $q(\theta)$ over the weights of the network. Two usual choices for
+    finding a MAP distribution are VI and Laplace, we show that those are
+    equal:
+
+    From multiple papers, we get the update equations for the mean and variance:
+    \begin{align*}
+        \Sigma_{t+1}^{-1} = (1-\rho)\Sigma^{-1}_t + \rho \mathbb{E}_{q_t}[\nabla^2_{\theta\theta} h(\theta)]\\
+        \mu_{t+1} = \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[\nabla_{\theta} h(\theta)]
+        \end{align*}
+    As we are at $\theta_{MAP}$, we know that $\nabla_{\theta} h(\theta)
+    = 0$. This means that $\mu_{t+1} = \mu_t$ and it follows for the variance, that $\Sigma_{n}^{-1} = \mathbb{E}_{q_t}[\nabla^2_{\theta\theta} h(\theta)]$.
+
+    In Laplace, we have the approximation $\mu = \theta_{MAP}$ and $\Sigma^{-1} = \nabla^2_{\theta\theta} h(\theta) \vert_{\theta_{MAP}}$.
+
+    To unite the two, we need to take a first-order delta approximation $\mathbb{E}_{q_t}[\nabla^2_{\theta\theta} h(\theta)] =\nabla^2_{\theta\theta} h(\theta) \vert_{\theta_{MAP}}$.
+
+    A note for the delta approximation: I think delta is still a crucial
+    part here, since this means that even if we are close to a point of high
+    loss, we wouldn't move on. Therefore, I think Laplace shines when we
+    don't want to optimize further but rather just want the best guess at
+    the moment.
+
+
+\section{Difference between VI and frequentist training}
+  This section highlights the key differences between training a Network
+  with Variational Inference and standard frequentist training. The main
+  result is that Natural Gradient Variational Inference can be seen as frequentist training
+  where we take Netwon steps.
+
+  \subsection{First versus second-order gradients}
+      We start with the update equation for Variational Inference:
+      \begin{align*}
+          \Sigma_{t+1}^{-1} = (1-\rho)\Sigma^{-1}_t + \rho \mathbb{E}_{q_t}[\nabla^2_{\theta\theta} h(\theta)]\\
+          \mu_{t+1} = \mu_t - \rho \Sigma_{t+1}\mathbb{E}_{q_t}[\nabla_{\theta} h(\theta)]
+      \end{align*}
+      We see that we scale the mean update with the inverse Hessian. Thus,
+      our mean update resembles a Netwon step. We also note that if we
+      would do Newton in our frequentist approach, we would have all the
+      necessary quantities to do VI, except the expectation over the
+      Hessian.
+  \subsection{Approximating the Expectation}    
+      We saw that one key difference is the expectation over the gradient
+      and Hessian during VI against the normal Hessian in Newton steps.
+      Here we argue, that the expectation adds an implicit reguralization
+      effect.
+
+      \subsubsection{The delta method}
+          We first note that we can unite both approaches by doing a
+          first-oder delta approximation as above. However, the advantage the
+          expectation is that our algorithm will stay away from areas where we
+          are close to high loss. This adds an implicit reguralizer.
+
+      \subsubsection{Single-Sample ELBO}
+          The problem of computing the expectation also arises in the case
+          of VI. Here, we often deal with that by approximating the
+          expectation with a Single-Sample. If we do that, the update becomes:
+          \begin{align*}
+              \mu_{t+1} = \mu_t - \rho \Sigma_{t+1}\nabla_{\theta} h(\theta)
+          \end{align*}
+          where $\theta \sim Q$. This gives rise to multiple frequentist VI ideas:
+          \begin{itemize}
+              \item VADAM: Here, we estimate our Variance like in Adam and
+              then one sample during training.
+          \end{itemize}
+
+\section{Dumb ideas}
+  \subsection{Single-Sample VI wit Laplace}
+    For training, we use the update from single sample ELBO, so we do a Netwon step update. However only
+    every $d$ Epochs, we update our guess from the Variance by Laplace.
+
+  \subsection{Don't use delta}
+    The delta approximation is quite bad, also when we approximate it at
+    $\theta_{MAP}$. However, what would happen if for approximation of the
+    Hessian at $\theta_{MAP}$, we dont use delta but rather MC sample where we
+    set the distribution to Laplaces guess.
     
+      
 
 
 \end{document}

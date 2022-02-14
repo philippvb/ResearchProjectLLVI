@@ -58,7 +58,7 @@
             \begin{itemize}
                 \item No closed-form solution, but multiple approximations exist
                 \item However, they perform worse than Monte-Carlo sampling
-                \item Possible explanation: MC as noisy Stochastic Gradient-Descent
+                \item Possible explanation: MC introduces noise which acts as a Reguralizer
             \end{itemize}
             \begin{figure}
                 \includegraphics[width=0.7\textwidth]{images/Classification/CFvsMC.jpg}
@@ -87,9 +87,9 @@
             \begin{columns}
                 \begin{column}{0.6\textwidth}
                 \begin{itemize}
-                    \item Use closed-form for Last-Layer versus single sample MC for Full-Layer training.
-                    \item Full-Layer has better solution, especially higher in-between uncertainty.
-                    \item Last-Layer training and predicting is faster.
+                    \item Use closed-form for Last-Layer versus single sample MC for Full-Layer training
+                    \item Full-Layer has better solution, especially higher in-between uncertainty
+                    \item Last-Layer training and predicting is faster
                 \end{itemize}
                 \begin{figure}
                     \includegraphics[width=0.8\textwidth]{images/Regression/LLvsFullMSE.jpg}
@@ -107,21 +107,21 @@
         \begin{frame}
             \frametitle{Classification: MNIST}
             \begin{itemize}
-                \item For more complex models (eg. MNIST), the computational advantage of Last-layer becomes more drastic
+                \item Last-Layer training is faster in the case of classification
                 \item Performance is similar
             \end{itemize}
             \begin{columns}
                 \begin{column}{0.5\textwidth}
                     \begin{figure}
-                        \includegraphics[width=1.1\textwidth]{images/Classification/LLvsFull.jpg}
+                        \includegraphics[width=1.1\textwidth]{images/Classification/LLvsFull2.jpg}
                     \end{figure}                  
                 \end{column}
                 \begin{column}{0.5\textwidth}                
-                    \begin{tabular}{p{0.4\textwidth}|p{0.2\textwidth}|p{0.2\textwidth}}
-                        Accuracy\\ (in \%)&Full-Layer & Last-Layer\\
+                    \begin{tabular}{p{0.5\textwidth}|p{0.2\textwidth}|p{0.2\textwidth}}
+                        Mean confidence\\ (in \%)&Full-Layer & Last-Layer\\
                         \hline
-                        Test dataset & 93.5 & 94.2\\
-                        OOD dataset & 68 & 72
+                        Test dataset & 93.4 & 95.5\\
+                        OOD dataset & 67.8 & 70.1
                     \end{tabular}
                 \end{column}
             \end{columns}
@@ -158,17 +158,18 @@
                                 \item Pretrained networks
                                 \item Speed up training
                             \end{itemize}
+                        \item Result: Laplace approximation provides good initialization 
                     \end{itemize}    
                 \end{column}
                 \begin{column}{0.5\textwidth}                    
                     \begin{figure}
                         \includegraphics[width=\textwidth]{images/Classification/LaplaceInit.png}
                     \end{figure}
-                    \begin{tabular}{cccc}
-                        &laplace & vilaplace & virefined \\
-                        test & 91.9 & 93.2 & 51.5 \\
-                        ood & 67.8 & 69.6 & 36.8
-                    \end{tabular}
+                    % \begin{tabular}{cccc}
+                    %     &laplace & vilaplace & virefined \\
+                    %     test & 91.9 & 93.2 & 51.5 \\
+                    %     ood & 67.8 & 69.6 & 36.8
+                    % \end{tabular}
                 \end{column}
             \end{columns}
         \end{frame}
