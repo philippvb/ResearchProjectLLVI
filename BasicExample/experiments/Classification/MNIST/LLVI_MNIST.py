@@ -7,6 +7,7 @@ from src.network.feature_extractor import CNN
 from src.network.Classification import LLVIClassification
 from src.network import LikApprox, PredictApprox
 from src.weight_distribution.Full import FullCovariance
+from src.weight_distribution.Diagonal import Diagonal
 from src.network import LLVINetwork
 
 batch_size_train = 32
@@ -60,12 +61,12 @@ def test_confidence(model:LLVINetwork, test_loader, ood_test_loader=None, sample
 
 
 lr = 1e-4
-feature_extractor = CNN(optimizer=torch.optim.Adam, lr=lr, weight_decay=5e-4)
-dist = FullCovariance(50, 10, lr=lr)
+feature_extractor = CNN(optimizer=torch.optim.Adam, lr=lr)
+dist = Diagonal(50, 10, lr=lr)
 net = LLVIClassification(50, 10, feature_extractor, dist,
 prior_log_var=-1, optimizer_type=torch.optim.Adam,
 tau=1, lr=lr)
 
 # net.train_without_VI(train_loader, epochs=2)
-net.train_model(train_loader, epochs=1, samples=10, n_datapoints=n_datapoints)
+net.train_model(train_loader, epochs=10, samples=10, n_datapoints=n_datapoints)
 test_confidence(net, test_loader, ood_test_loader, samples=10)
