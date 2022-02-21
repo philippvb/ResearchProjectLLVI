@@ -3,7 +3,6 @@ import os
 from datetime import datetime
 from enum import Enum
 from typing import List
-from numpy import dtype
 
 import torch
 from torch import nn
@@ -88,7 +87,12 @@ class LLVINetwork(nn.Module):
 
     def forward_MC(self, x:torch.Tensor, samples=10) -> torch.Tensor:
         features = self.feature_extractor(x)
-        output = features @ self.sample_ll(samples=samples)
+        if torch.any(torch.isnan(features)):
+            raise ValueError("Features are nan")
+        ll_samples = self.sample_ll(samples=samples)
+        if torch.any(torch.isnan(ll_samples)):
+            raise ValueError("LL samples are nan")
+        output = features @ ll_samples
         return output
 
     def forward_MC2(self, x:torch.Tensor, samples=10):
@@ -179,7 +183,12 @@ class LLVINetwork(nn.Module):
             return self.loss_fun(prediction, target, average=False)
         elif method == LikApprox.MONTECARLO:
             prediction = self.forward_MC(data, **method_kwargs)
-            return self.loss_fun(prediction, target, average=True)
+            if torch.any(torch.isnan(prediction)):
+                raise ValueError("prediction is nan")
+            loss = self.loss_fun(prediction, target, average=True)
+            if torch.isnan(loss):
+                raise ValueError("loss is nan")
+            return loss
         else:
             raise ValueError(f"Method {method} not implemented")
 
@@ -200,6 +209,13 @@ class LLVINetwork(nn.Module):
             return [loss]
 
         return train_wrapper.wrap_train(epochs=epochs, train_loader=train_loader, train_step_fun=train_step_fun)
+
+    def train_model_log_trajectories(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
+        self.trajectories = torch.empty_like(self.get_ll_mu().T)
+        def save_trajectories(*args):
+            self.trajectories = torch.cat((self.trajectories, self.get_ll_mu().detach().T), dim=0)
+        output = self.train_model(train_loader, n_datapoints, epochs, train_hyper, update_freq, callback=save_trajectories, method=method, **method_kwargs)
+        return output, self.trajectories[1:, :]
 
     # train functions
     def train_model(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, callback=None, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
@@ -235,6 +251,8 @@ class LLVINetwork(nn.Module):
             # compute loss functions
             prediction_loss = self.compute_prediction_loss(data, target, method, **method_kwargs)
             kl_loss = self.tau * self.KL_div() / n_datapoints # rescale kl_loss
+            if torch.isnan(kl_loss):
+                raise ValueError("KL loss is nan")
             loss = prediction_loss + kl_loss
             # backward pass
             loss.backward()
