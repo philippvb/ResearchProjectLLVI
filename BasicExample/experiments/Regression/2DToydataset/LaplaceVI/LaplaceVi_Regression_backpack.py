@@ -2,7 +2,7 @@ import sys
 import torch
 sys.path.append("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample")
 from src.log_likelihood import LogLikelihoodMonteCarlo
-from datasets.Regression.toydataset import create_dataset, sinus_mapping, dataset_to_loader, visualize_predictions
+from datasets.Regression.toydataset import create_dataset, sinus_mapping, dataset_to_loader, visualize_predictions, to_loader
 from src.network.feature_extractor import FC_Net
 from src.network import LikApprox
 
@@ -17,7 +17,7 @@ feature_extractor = torch.nn.Sequential(
         torch.nn.Tanh(),
         torch.nn.Linear(100, 200),
         torch.nn.Tanh(),
-        torch.nn.Linear(200, 1)
+        torch.nn.Linear(200, 1, bias=False)
 )
 print(list(feature_extractor.children())[-1].weight.shape)
 feature_extractor.optimizer = torch.optim.Adam(feature_extractor.parameters())
@@ -31,15 +31,15 @@ train_set, test_set = dataset_to_loader(x_train, y_train, x_test, y_test , batch
 from src.laplace.backpack_implementation import LaplaceVI
 net = LaplaceVI(100, 1, feature_extractor, LogLikelihoodMonteCarlo, prior_log_var=10)
 
-
-# net.train_without_VI(train_set, epochs=100)
-net.train_model(train_set, epochs=200, n_datapoints=512, samples=1, method=LikApprox.MONTECARLO, train_hyper=False, update_freq=5)
+net.train_without_VI(train_set, epochs=100)
+# net.train_model(train_set, epochs=200, n_datapoints=512, samples=1, method=LikApprox.MONTECARLO, train_hyper=False, update_freq=5)
 # net.set_cov(train_set)
 
 # net(torch.unsqueeze(x_train, dim=-1))
 # net.train_without_VI(train_set, epochs=100)
 # net.train_model(train_set, epochs=500, n_datapoints=256, samples=1, method=LikApprox.CLOSEDFORM, train_hyper=True, update_freq=5)
-print(net.cov_approx)
+net.reformat_network()
+
 
 from matplotlib import pyplot as plt
 plt.rcParams.update({
@@ -49,7 +49,12 @@ plt.rcParams.update({
     "font.sans-serif": ["Helvetica"]})
 fig, (ax1, ax2) = plt.subplots(2)
 visualize_predictions(net, ax1, x_train, y_train, x_test, y_test, data_noise=data_noise, noise=False)
-ax1.set_title("Closed form")
+ax1.set_title("Backpack")
+
+net.cov_approx = net.compute_cov_by_hand(train_set)
+net.sigma_noise = 0
+visualize_predictions(net, ax2, x_train, y_train, x_test, y_test, data_noise=data_noise, noise=False)
+ax2.set_title("My implementation")
 
 # feature_extractor = FC_Net(layers=[1, 200, 100], nll = torch.nn.Tanh(),lr=lr, weight_decay=0.1)
 # net = LLVIRegression(100, 1, feature_extractor, dist, prior_log_var=-6,

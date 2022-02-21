@@ -69,7 +69,7 @@ for i in pbar:
 
 # define laplace
 la = Laplace(laplace_model, "regression",
-    subset_of_weights="last_layer", hessian_structure="full")
+    subset_of_weights="last_layer", hessian_structure="diag")
 la.fit(laplace_loader)
 
 log_prior, log_sigma = torch.ones(1, requires_grad=True), torch.ones(1, requires_grad=True)
@@ -86,7 +86,8 @@ ax1.set_title("Laplace pretraining")
 ax2.set_title("VI with Laplace init, Monte Carlo")
 visualize_predictions(la, ax1, x_train, y_train, x_test, y_test, data_noise=data_noise, laplace=True)
 
-
+plt.show()
+raise ValueError
 # define VI model
 from src.network.feature_extractor import FC_Net
 from src.network.Regression import LLVIRegression

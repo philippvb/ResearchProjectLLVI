@@ -8,7 +8,7 @@ from src.network import LikApprox
 torch.manual_seed(5)
 
 data_noise = 0.2
-x_train, y_train, x_test, y_test = create_dataset(lower=-5, upper=7, mapping=sinus_mapping,cluster_pos=[-0.5,2], data_noise=data_noise, n_datapoints=256)
+x_train, y_train, x_test, y_test = create_dataset(lower=-5, upper=7, mapping=sinus_mapping,cluster_pos=[2,4], data_noise=data_noise, n_datapoints=256)
 
 lr = 1e-4
 feature_extractor = FC_Net(layers=[1, 200, 100], nll = torch.nn.Tanh(),lr=lr, weight_decay=0.1)
@@ -72,9 +72,9 @@ train_set, test_set = dataset_to_loader(x_train, y_train, x_test, y_test , batch
 # net.train_without_VI(list(zip(x_batch, y_batch)), epochs=100)
 # net.train_model(list(zip(x_batch, y_batch)), epochs=500, n_datapoints=512, samples=1, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
 
-net.train_without_VI(train_set, epochs=100)
-net.train_model(train_set, epochs=1000, n_datapoints=256, samples=10, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
-visualize_predictions(net, ax2, x_train, y_train, x_test, y_test, data_noise=data_noise)
+# net.train_without_VI(train_set, epochs=100)
+# net.train_model(train_set, epochs=1000, n_datapoints=256, samples=10, method=LikApprox.MONTECARLO, train_hyper=True, update_freq=5)
+# visualize_predictions(net, ax2, x_train, y_train, x_test, y_test, data_noise=data_noise)
 ax2.set_title("MC")
 
 # plt.savefig("/Users/philippvonbachmann/Documents/University/WiSe2122/ResearchProject/ResearchProjectLLVI/BasicExample/results/Regression/cf_mc_comparison/comparison_hyperparam_opt.jpg")
