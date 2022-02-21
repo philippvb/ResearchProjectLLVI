@@ -227,7 +227,7 @@ we set $\Sigma$ to the Hessian but we never propagate it through.
   The problem is now that our next derivative becomes 0 wrt the ll weights, thus
   it isn't included in the gradient.
 
-  However, we can take the Fisher instead:
+  However, we can take use the Fisher/GGN instead:
   \begin{align}
     &E_{p(y \vert x, \theta)}[\nabla_\theta \log(p(y \vert x, \theta)) \cdot \nabla_\theta \log(p(y \vert x, \theta))^T]\\
     &= E_{p(y \vert x, \theta)}[\Phi_X^T (f(x, \theta) - y) \cdot (\Phi_X^T (f(x, \theta) - y))^T]\\
@@ -237,6 +237,7 @@ we set $\Sigma$ to the Hessian but we never propagate it through.
 
 
   \subsection{Sigmoid classification}
+    see also Bishop, 4.97:
     \begin{align}
       \nabla^2_\theta -\log p(y \vert \theta, x) 
       &= \nabla^2_\theta - \sum_i y_i \log(f(x_i, \theta)) + (1 - y_i) \log(1-f(x_i, \theta))\\

@@ -1,0 +1,45 @@
+\documentclass[a4paper]{scrartcl}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage{pgfplots}
+\usepackage{amsmath, enumerate, amssymb, multirow, fancyhdr, color, graphicx, lastpage, listings, tikz, pdflscape, subfigure, float, polynom, hyperref, tabularx, forloop, geometry, listings, fancybox, tikz, forest, tabstackengine, cancel}
+\input kvmacros
+\geometry{a4paper,left=3cm, right=3cm, top=3cm, bottom=3cm}
+\pagestyle {fancy}
+
+
+\begin{document}
+
+
+\title{Beeing Bayesian as a frequentist}
+\maketitle
+
+\section{Main point}
+    The main point is that at $\theta_{MAP}$, Laplace approximation is nearly
+    the same as continuing to train with Variational Inference. Thus, the
+    question is not if Laplace is a good method, but rather how expensive we
+    want to be during training. Then we show what we loose with a frequentist
+    training or how we can step by step make it closer to bayesian one.
+
+\section{Structure}
+    \subsection{General connection between Laplace and VI}
+        Show the general connection between Laplace and VI, when they are
+        exactly the same and where the Hessian comes from.
+
+    \subsection{Laplace at MAP}
+        Show that Laplace at MAP is nearly the same as continuing to train with
+        VI, thus gives us a good approximation at MAP.
+
+    \subsection{Fixing frequentist training}
+        Show how we could fix frequentist training, mainly two points: We need
+        Newton update steps and we need to cope with the expectation.
+
+
+\section{Pratical Part}
+    If we want to include a practical part, here are some ideas:
+    \begin{itemize}
+        \item practically verify Laplace at MAP is same as VI, maybe with runtime analysis
+    \end{itemize}
+
+\end{document}
+
