@@ -59,3 +59,9 @@ class LLVIRegressionNoNoise(LLVINetwork):
     def predict(self, x:torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
         pred_mean, pred_cov = self.forward(x)
         return pred_mean, pred_cov
+
+    def forward(self, x: torch.Tensor) -> tuple[torch.Tensor, torch.Tensor]:
+        if self.out_dim == 1:
+            return self.forward_single(x)
+        else:
+            return self.forward_multi(x)
