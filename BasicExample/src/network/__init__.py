@@ -211,11 +211,13 @@ class LLVINetwork(nn.Module):
         return train_wrapper.wrap_train(epochs=epochs, train_loader=train_loader, train_step_fun=train_step_fun)
 
     def train_model_log_trajectories(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
-        self.trajectories = torch.empty_like(self.get_ll_mu().T)
+        self.trajectories_mean = torch.empty_like(self.get_ll_mu().T)
+        self.trajectories_cov = torch.empty_like(self.get_ll_cov().diag().unsqueeze(dim=0))
         def save_trajectories(*args):
-            self.trajectories = torch.cat((self.trajectories, self.get_ll_mu().detach().T), dim=0)
+            self.trajectories_mean = torch.cat((self.trajectories_mean, self.get_ll_mu().detach().T), dim=0)
+            self.trajectories_cov = torch.cat((self.trajectories_cov, self.get_ll_cov().detach().diag().unsqueeze(dim=0)), dim=0)
         output = self.train_model(train_loader, n_datapoints, epochs, train_hyper, update_freq, callback=save_trajectories, method=method, **method_kwargs)
-        return output, self.trajectories[1:, :]
+        return output, self.trajectories_mean[1:, :], self.trajectories_cov[1:, :]
 
     # train functions
     def train_model(self, train_loader, n_datapoints, epochs=1, train_hyper=False, update_freq=10, callback=None, method:LikApprox=LikApprox.MONTECARLO, **method_kwargs):
